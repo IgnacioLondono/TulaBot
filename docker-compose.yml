@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  # Base de datos MySQL
+  mysql:
+    image: mysql:8.0
+    container_name: tulabot-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-tulabot_root_password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-tulabot}
+      MYSQL_USER: ${MYSQL_USER:-tulabot}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-tulabot_password}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    networks:
+      - tulabot-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-tulabot_root_password}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Bot de Discord
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tulabot-bot
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=production
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - CLIENT_ID=${CLIENT_ID}
+      - DEFAULT_PREFIX=${DEFAULT_PREFIX:-!}
+      - TENOR_API_KEY=${TENOR_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=${MYSQL_USER:-tulabot}
+      - DB_PASSWORD=${MYSQL_PASSWORD:-tulabot_password}
+      - DB_NAME=${MYSQL_DATABASE:-tulabot}
+      - WEB_ENABLED=false
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+    networks:
+      - tulabot-network
+
+  # Panel Web
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: tulabot-web
+    restart: unless-stopped
+    depends_on:
+      - bot
+      - mysql
+    environment:
+      - NODE_ENV=production
+      - CLIENT_ID=${CLIENT_ID}
+      - CLIENT_SECRET=${CLIENT_SECRET}
+      - REDIRECT_URI=${REDIRECT_URI:-http://localhost:3000/callback}
+      - WEB_PORT=3000
+      - SESSION_SECRET=${SESSION_SECRET}
+      - BOT_URL=http://bot:3001
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - tulabot-network
+
+networks:
+  tulabot-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+    driver: local
+
