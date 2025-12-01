@@ -307,6 +307,107 @@ function requireAuth(req, res, next) {
     next();
 }
 
+// ============================================
+// RUTAS API INTERNAS DEL BOT (sin autenticación)
+// Estas rutas solo están disponibles cuando BOT_API_PORT está definido
+// ============================================
+if (process.env.BOT_API_PORT) {
+    // Ruta para obtener servidores del bot (sin autenticación)
+    app.get('/api/internal/guilds', async (req, res) => {
+        try {
+            if (!botClient || !botClient.isReady || !botClient.isReady()) {
+                return res.status(503).json({ error: 'Bot no disponible' });
+            }
+            
+            const botGuilds = botClient.guilds.cache.map(guild => ({
+                id: guild.id,
+                name: guild.name,
+                icon: guild.iconURL({ dynamic: true, size: 256 }),
+                memberCount: guild.memberCount,
+                channels: guild.channels.cache.filter(c => c.type === 0 || c.type === 2).map(c => ({
+                    id: c.id,
+                    name: c.name,
+                    type: c.type
+                }))
+            }));
+            
+            res.json(botGuilds);
+        } catch (error) {
+            console.error('Error obteniendo servidores del bot (API interna):', error);
+            res.status(500).json({ error: 'Error al obtener servidores' });
+        }
+    });
+    
+    // Ruta para obtener estadísticas del bot (sin autenticación)
+    app.get('/api/internal/stats', async (req, res) => {
+        try {
+            if (!botClient || !botClient.isReady || !botClient.isReady()) {
+                return res.status(503).json({ error: 'Bot no disponible' });
+            }
+            
+            const stats = {
+                guilds: botClient.guilds.cache.size,
+                users: botClient.users.cache.size,
+                channels: botClient.channels.cache.size,
+                uptime: botClient.uptime,
+                ping: botClient.ws.ping,
+                commands: botClient.commands?.size || 0,
+                memory: process.memoryUsage(),
+                nodeVersion: process.version,
+                platform: process.platform
+            };
+            
+            res.json(stats);
+        } catch (error) {
+            console.error('Error obteniendo estadísticas del bot (API interna):', error);
+            res.status(500).json({ error: 'Error al obtener estadísticas' });
+        }
+    });
+    
+    // Ruta para obtener canales de un servidor (sin autenticación)
+    app.get('/api/internal/guild/:guildId/channels', async (req, res) => {
+        try {
+            const { guildId } = req.params;
+            
+            if (!botClient || !botClient.isReady || !botClient.isReady()) {
+                return res.status(503).json({ error: 'Bot no disponible' });
+            }
+            
+            const guild = botClient.guilds.cache.get(guildId);
+            if (!guild) {
+                return res.status(404).json({ error: 'Servidor no encontrado' });
+            }
+            
+            const channels = guild.channels.cache
+                .filter(c => c.type === 0 || c.type === 2) // Solo texto y voz
+                .map(c => ({
+                    id: c.id,
+                    name: c.name,
+                    type: c.type,
+                    parent: c.parent ? {
+                        id: c.parent.id,
+                        name: c.parent.name
+                    } : null
+                }))
+                .sort((a, b) => {
+                    if (a.parent && b.parent) {
+                        if (a.parent.id !== b.parent.id) {
+                            return a.parent.name.localeCompare(b.parent.name);
+                        }
+                    }
+                    return a.name.localeCompare(b.name);
+                });
+            
+            res.json(channels);
+        } catch (error) {
+            console.error('Error obteniendo canales (API interna):', error);
+            res.status(500).json({ error: 'Error al obtener canales' });
+        }
+    });
+    
+    console.log('✅ Rutas API internas del bot habilitadas (sin autenticación)');
+}
+
 // Rutas protegidas
 app.get('/api/user', requireAuth, (req, res) => {
     res.json({
@@ -322,8 +423,8 @@ app.get('/api/guilds', requireAuth, async (req, res) => {
         if (BOT_URL) {
             // En Docker: hacer petición HTTP al bot para obtener servidores donde está presente
             try {
-                const response = await axios.get(`${BOT_URL}/api/guilds`, { 
-                    timeout: 5000,
+                const response = await axios.get(`${BOT_URL}/api/internal/guilds`, { 
+                    timeout: 10000,
                     headers: {
                         'X-User-Guilds': JSON.stringify(guilds.map(g => g.id))
                     }
@@ -375,19 +476,30 @@ app.get('/api/guild/:guildId/channels', requireAuth, async (req, res) => {
     try {
         const { guildId } = req.params;
         
-        if (!botClient) {
+        // Verificar que el usuario tenga permisos en el servidor
+        const userGuild = req.session.guilds?.find(g => g.id === guildId);
+        if (!userGuild) {
+            return res.status(403).json({ error: 'No tienes acceso a este servidor' });
+        }
+        
+        if (BOT_URL) {
+            // En Docker: hacer petición HTTP al bot
+            try {
+                const response = await axios.get(`${BOT_URL}/api/internal/guild/${guildId}/channels`, { 
+                    timeout: 10000 
+                });
+                return res.json(response.data);
+            } catch (error) {
+                console.error('❌ Error obteniendo canales del bot:', error.message);
+                return res.status(503).json({ error: 'Bot no disponible', details: error.message });
+            }
+        } else if (!botClient) {
             return res.status(500).json({ error: 'Bot no disponible' });
         }
 
         const guild = botClient.guilds.cache.get(guildId);
         if (!guild) {
             return res.status(404).json({ error: 'Servidor no encontrado' });
-        }
-
-        // Verificar que el usuario tenga permisos en el servidor
-        const userGuild = req.session.guilds?.find(g => g.id === guildId);
-        if (!userGuild) {
-            return res.status(403).json({ error: 'No tienes acceso a este servidor' });
         }
 
         const channels = guild.channels.cache
@@ -478,7 +590,7 @@ app.get('/api/stats', requireAuth, async (req, res) => {
         if (BOT_URL) {
             // En Docker: hacer petición HTTP al bot
             try {
-                const response = await axios.get(`${BOT_URL}/api/stats`, { timeout: 5000 });
+                const response = await axios.get(`${BOT_URL}/api/internal/stats`, { timeout: 10000 });
                 return res.json(response.data);
             } catch (error) {
                 console.error('❌ Error obteniendo stats del bot:', error.message);
