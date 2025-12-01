@@ -120,27 +120,34 @@ app.get('/api/user', requireAuth, (req, res) => {
 
 app.get('/api/guilds', requireAuth, async (req, res) => {
     try {
+        if (!botClient) {
+            return res.status(503).json({ error: 'Bot no disponible. Esperando conexión...' });
+        }
+        
+        if (!botClient.isReady()) {
+            return res.status(503).json({ error: 'Bot aún no está listo. Esperando conexión...' });
+        }
+        
         const guilds = req.session.guilds || [];
         const botGuilds = [];
-        if (botClient) {
-            for (const guild of guilds) {
-                const botGuild = botClient.guilds.cache.get(guild.id);
-                if (botGuild) {
-                    botGuilds.push({
-                        id: guild.id,
-                        name: guild.name,
-                        icon: guild.icon ? `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png` : null,
-                        permissions: guild.permissions,
-                        botGuild: {
-                            memberCount: botGuild.memberCount,
-                            channels: botGuild.channels.cache.filter(c => c.type === 0 || c.type === 2).map(c => ({
-                                id: c.id,
-                                name: c.name,
-                                type: c.type
-                            }))
-                        }
-                    });
-                }
+        
+        for (const guild of guilds) {
+            const botGuild = botClient.guilds.cache.get(guild.id);
+            if (botGuild) {
+                botGuilds.push({
+                    id: guild.id,
+                    name: guild.name,
+                    icon: guild.icon ? `https://cdn.discordapp.com/icons/${guild.id}/${guild.icon}.png` : null,
+                    permissions: guild.permissions,
+                    botGuild: {
+                        memberCount: botGuild.memberCount,
+                        channels: botGuild.channels.cache.filter(c => c.type === 0 || c.type === 2).map(c => ({
+                            id: c.id,
+                            name: c.name,
+                            type: c.type
+                        }))
+                    }
+                });
             }
         }
         res.json(botGuilds);
@@ -154,8 +161,8 @@ app.get('/api/guild/:guildId/channels', requireAuth, async (req, res) => {
     try {
         const { guildId } = req.params;
         
-        if (!botClient) {
-            return res.status(500).json({ error: 'Bot no disponible' });
+        if (!botClient || !botClient.isReady()) {
+            return res.status(503).json({ error: 'Bot no disponible. Esperando conexión...' });
         }
 
         const guild = botClient.guilds.cache.get(guildId);
@@ -189,8 +196,8 @@ app.post('/api/send-embed', requireAuth, async (req, res) => {
     try {
         const { guildId, channelId, embed } = req.body;
 
-        if (!botClient) {
-            return res.status(500).json({ error: 'Bot no disponible' });
+        if (!botClient || !botClient.isReady()) {
+            return res.status(503).json({ error: 'Bot no disponible. Esperando conexión...' });
         }
 
         const guild = botClient.guilds.cache.get(guildId);
@@ -251,8 +258,13 @@ app.post('/api/send-embed', requireAuth, async (req, res) => {
 
 app.get('/api/stats', requireAuth, (req, res) => {
     if (!botClient) {
-        return res.status(500).json({ error: 'Bot no disponible' });
+        return res.status(503).json({ error: 'Bot no disponible. Esperando conexión...' });
     }
+    
+    if (!botClient.isReady()) {
+        return res.status(503).json({ error: 'Bot aún no está listo. Esperando conexión...' });
+    }
+    
     res.json({
         guilds: botClient.guilds.cache.size,
         users: botClient.users.cache.size,
@@ -279,8 +291,16 @@ app.get('/api/logs', requireAuth, (req, res) => {
 });
 
 app.get('/api/commands', requireAuth, (req, res) => {
-    if (!botClient || !botClient.commands) {
-        return res.status(500).json({ error: 'Bot no disponible' });
+    if (!botClient) {
+        return res.status(503).json({ error: 'Bot no disponible. Esperando conexión...' });
+    }
+    
+    if (!botClient.isReady()) {
+        return res.status(503).json({ error: 'Bot aún no está listo. Esperando conexión...' });
+    }
+    
+    if (!botClient.commands) {
+        return res.status(500).json({ error: 'Comandos no disponibles' });
     }
 
     const commandsPath = path.join(__dirname, '..', 'src', 'commands');
@@ -326,8 +346,8 @@ app.get('/api/guild/:guildId/info', requireAuth, async (req, res) => {
     try {
         const { guildId } = req.params;
         
-        if (!botClient) {
-            return res.status(500).json({ error: 'Bot no disponible' });
+        if (!botClient || !botClient.isReady()) {
+            return res.status(503).json({ error: 'Bot no disponible. Esperando conexión...' });
         }
 
         const guild = botClient.guilds.cache.get(guildId);
@@ -383,8 +403,8 @@ app.post('/api/moderate', requireAuth, async (req, res) => {
     try {
         const { guildId, action, userId, reason } = req.body;
 
-        if (!botClient) {
-            return res.status(500).json({ error: 'Bot no disponible' });
+        if (!botClient || !botClient.isReady()) {
+            return res.status(503).json({ error: 'Bot no disponible. Esperando conexión...' });
         }
 
         const guild = botClient.guilds.cache.get(guildId);
@@ -436,8 +456,8 @@ app.get('/api/guild/:guildId/members', requireAuth, async (req, res) => {
         const { guildId } = req.params;
         const query = req.query.q || '';
         
-        if (!botClient) {
-            return res.status(500).json({ error: 'Bot no disponible' });
+        if (!botClient || !botClient.isReady()) {
+            return res.status(503).json({ error: 'Bot no disponible. Esperando conexión...' });
         }
 
         const guild = botClient.guilds.cache.get(guildId);

@@ -10,6 +10,17 @@ module.exports = {
         logger.info(`👥 Usuarios: ${client.users.cache.size}`);
         logger.info(`📝 Comandos cargados: ${client.commands.size}`);
 
+        // Inyectar el cliente en el servidor web cuando el bot esté listo
+        if (process.env.WEB_ENABLED === 'true') {
+            try {
+                const { setBotClient } = require('../../web/server');
+                setBotClient(client);
+                logger.info('✅ Cliente del bot inyectado en el panel web');
+            } catch (error) {
+                logger.error('⚠️ Error inyectando cliente en panel web:', error.message);
+            }
+        }
+
         // Actividades rotativas
         const activities = [
             { name: `${client.guilds.cache.size} servidores`, type: ActivityType.Watching },

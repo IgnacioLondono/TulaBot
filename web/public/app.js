@@ -403,7 +403,13 @@ async function loadGuilds() {
             const guilds = await response.json();
             displayGuilds(guilds);
         } else {
-            showToast('Error al cargar servidores', 'error');
+            const error = await response.json().catch(() => ({ error: 'Error desconocido' }));
+            if (response.status === 503) {
+                const container = document.getElementById('guildsList');
+                container.innerHTML = '<div class="loading"><p style="color: var(--fate-gold);">⏳ Esperando conexión del bot...</p></div>';
+            } else {
+                showToast(error.error || 'Error al cargar servidores', 'error');
+            }
         }
     } catch (error) {
         console.error('Error cargando servidores:', error);
@@ -683,6 +689,14 @@ async function loadStats() {
                     </div>
                 `;
             }
+        } else if (response.status === 503) {
+            // Bot no disponible
+            document.getElementById('statGuilds').textContent = '⏳';
+            document.getElementById('statUsers').textContent = '⏳';
+            document.getElementById('statChannels').textContent = '⏳';
+            document.getElementById('statPing').textContent = '⏳';
+            document.getElementById('statCommands').textContent = '⏳';
+            document.getElementById('statUptime').textContent = '⏳';
         }
     } catch (error) {
         console.error('Error cargando estadísticas:', error);
@@ -817,7 +831,11 @@ async function loadCommands() {
             }
         } else {
             const error = await response.json().catch(() => ({ error: 'Error al cargar comandos' }));
-            container.innerHTML = `<div style="text-align: center; padding: 3rem; color: var(--error-color);"><p>${error.error || 'Error al cargar comandos'}</p></div>`;
+            if (response.status === 503) {
+                container.innerHTML = '<div style="text-align: center; padding: 3rem; color: var(--fate-gold);"><p>⏳ Esperando conexión del bot...</p></div>';
+            } else {
+                container.innerHTML = `<div style="text-align: center; padding: 3rem; color: var(--error-color);"><p>${error.error || 'Error al cargar comandos'}</p></div>`;
+            }
         }
     } catch (error) {
         console.error('Error cargando comandos:', error);

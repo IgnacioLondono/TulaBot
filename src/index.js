@@ -252,12 +252,13 @@ process.on('unhandledRejection', error => {
 });
 
 // Iniciar servidor web (si está habilitado)
+// El botClient se inyectará cuando el bot esté listo (en el evento 'ready')
 if (process.env.WEB_ENABLED === 'true') {
     try {
-        const { setBotClient } = require('../web/server');
-        setBotClient(client);
-        // El servidor se inicia automáticamente al requerir el módulo
-        // Si hay un error, se maneja dentro del módulo
+        // Solo requerir el módulo para iniciar el servidor
+        // El cliente se inyectará en el evento 'ready' cuando esté conectado
+        require('../web/server');
+        console.log('🌐 Panel web iniciado (esperando conexión del bot...)');
     } catch (error) {
         console.error('⚠️ Error iniciando panel web:', error.message);
         console.log('💡 El bot continuará funcionando sin el panel web.');
