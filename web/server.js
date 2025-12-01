@@ -11,6 +11,9 @@ const cors = require('cors');
 const app = express();
 const PORT = process.env.WEB_PORT || 3000;
 
+// URL del bot API (para Docker) - Se conecta al contenedor bot en puerto 3001
+const BOT_URL = process.env.BOT_URL || null;
+
 // Validar variables de entorno requeridas
 if (!process.env.CLIENT_ID) {
     console.error('❌ ERROR: CLIENT_ID no está configurado en .env');
@@ -25,9 +28,6 @@ if (!process.env.CLIENT_SECRET) {
 
 // Configuración de OAuth2
 const redirectUri = process.env.REDIRECT_URI || `http://localhost:${PORT}/callback`;
-
-// URL del bot API (para Docker) - Declarar antes de usar
-const BOT_URL = process.env.BOT_URL || null;
 
 const oauth = new DiscordOauth2({
     clientId: process.env.CLIENT_ID,
