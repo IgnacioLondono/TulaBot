@@ -8,7 +8,8 @@ WORKDIR /app
 COPY package*.json ./
 
 # Instalar dependencias
-RUN npm ci --only=production
+# Usar npm install porque package-lock.json puede no existir
+RUN npm install --omit=dev --legacy-peer-deps
 
 # Copiar código fuente
 COPY public/ ./public/
