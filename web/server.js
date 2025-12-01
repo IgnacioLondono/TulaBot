@@ -38,7 +38,10 @@ console.log(`   Client Secret: ${process.env.CLIENT_SECRET ? '✅ Configurado' :
 console.log(`   Redirect URI: ${redirectUri}`);
 
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: true, // Permitir cualquier origen (o especificar el dominio)
+    credentials: true // Permitir cookies
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -54,10 +57,25 @@ app.use(session({
         httpOnly: true,
         maxAge: 24 * 60 * 60 * 1000, // 24 horas
         sameSite: 'lax', // Ayuda con redirecciones de OAuth
-        path: '/' // Asegurar que la cookie esté disponible en toda la aplicación
+        path: '/', // Asegurar que la cookie esté disponible en toda la aplicación
+        domain: undefined // No establecer dominio para que funcione en cualquier subdominio/IP
     },
     name: 'tulabot.session' // Nombre personalizado para la cookie
 }));
+
+// Middleware de debugging para sesiones (solo en desarrollo)
+if (process.env.NODE_ENV !== 'production') {
+    app.use((req, res, next) => {
+        if (req.path.startsWith('/api/')) {
+            console.log(`📋 Request a ${req.path}:`);
+            console.log(`   Cookie recibida: ${req.headers.cookie || 'Ninguna'}`);
+            console.log(`   Session ID: ${req.sessionID}`);
+            console.log(`   Usuario en sesión: ${req.session?.user ? req.session.user.username : 'No'}`);
+            console.log(`   Autenticado: ${req.session?.authenticated || false}`);
+        }
+        next();
+    });
+}
 
 // Variable global para el cliente del bot (se inyectará desde index.js)
 let botClient = null;
@@ -162,27 +180,17 @@ app.get('/callback', async (req, res) => {
             return res.redirect('/login?error=auth_failed');
         }
 
-        // Regenerar ID de sesión después de autenticación exitosa (mejora la seguridad)
-        await new Promise((resolve, reject) => {
-            req.session.regenerate((err) => {
-                if (err) {
-                    console.error('❌ Error regenerando sesión:', err);
-                    reject(err);
-                } else {
-                    resolve();
-                }
-            });
-        });
+        // Limpiar estado OAuth
+        delete req.session.oauthState;
 
-        // Guardar en sesión
+        // Guardar datos en sesión
         req.session.user = user;
         req.session.guilds = guilds || [];
         req.session.accessToken = tokenData.access_token;
         req.session.authenticated = true;
         req.session.loginTime = new Date().toISOString();
-        delete req.session.oauthState; // Limpiar estado OAuth
 
-        // Guardar sesión antes de redirigir (usando promesa para asegurar que se guarde)
+        // Guardar sesión y esperar a que se complete antes de redirigir
         await new Promise((resolve, reject) => {
             req.session.save((err) => {
                 if (err) {
@@ -191,23 +199,15 @@ app.get('/callback', async (req, res) => {
                 } else {
                     console.log(`✅ Usuario autenticado: ${user.username}#${user.discriminator} (${user.id})`);
                     console.log(`   Servidores: ${guilds?.length || 0}`);
+                    console.log(`   Sesión ID: ${req.sessionID}`);
                     console.log(`   Sesión guardada correctamente`);
-                    console.log(`   Cookie de sesión establecida`);
                     resolve();
                 }
             });
         });
         
-        // Establecer manualmente la cookie para asegurar que se guarde
-        res.cookie('tulabot.session', req.sessionID, {
-            maxAge: 24 * 60 * 60 * 1000, // 24 horas
-            httpOnly: true,
-            secure: process.env.NODE_ENV === 'production',
-            sameSite: 'lax',
-            path: '/'
-        });
-        
         // Redirigir después de asegurar que la sesión se guardó
+        // express-session establecerá automáticamente la cookie
         res.redirect('/');
     } catch (error) {
         console.error('❌ Error en callback:', error);

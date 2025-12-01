@@ -3,6 +3,14 @@ let currentUser = null;
 let currentGuilds = [];
 let embedFields = [];
 
+// Función auxiliar para fetch con credenciales
+async function fetchWithCredentials(url, options = {}) {
+    return fetch(url, {
+        ...options,
+        credentials: 'include' // Siempre incluir cookies
+    });
+}
+
 // Clave para localStorage
 const STORAGE_KEY = 'tulabot_panel_state';
 
@@ -205,7 +213,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Verificar autenticación
 async function checkAuth() {
     try {
-        const response = await fetch('/api/user');
+        const response = await fetchWithCredentials('/api/user');
         if (response.ok) {
             const data = await response.json();
             currentUser = data.user;
@@ -382,7 +390,7 @@ function showSection(sectionId) {
 // Cargar servidores
 async function loadGuilds() {
     try {
-        const response = await fetch('/api/guilds');
+        const response = await fetchWithCredentials('/api/guilds');
         if (response.ok) {
             const guilds = await response.json();
             displayGuilds(guilds);
@@ -427,7 +435,7 @@ function displayGuilds(guilds) {
 // Cargar servidores para el formulario de embed
 async function loadGuildsForEmbed() {
     try {
-        const response = await fetch('/api/guilds');
+        const response = await fetchWithCredentials('/api/guilds');
         if (response.ok) {
             const guilds = await response.json();
             const select = document.getElementById('guildSelect');
@@ -451,7 +459,7 @@ async function handleGuildSelect() {
     }
 
     try {
-        const response = await fetch(`/api/guild/${guildId}/channels`);
+        const response = await fetchWithCredentials(`/api/guild/${guildId}/channels`);
         if (response.ok) {
             const channels = await response.json();
             channelSelect.disabled = false;
@@ -585,7 +593,7 @@ async function sendEmbed() {
     });
 
     try {
-        const response = await fetch('/api/send-embed', {
+        const response = await fetchWithCredentials('/api/send-embed', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -619,7 +627,7 @@ async function sendEmbed() {
 // Cargar estadísticas
 async function loadStats() {
     try {
-        const response = await fetch('/api/stats');
+        const response = await fetchWithCredentials('/api/stats');
         if (response.ok) {
             const stats = await response.json();
             document.getElementById('statGuilds').textContent = stats.guilds || 0;
@@ -685,7 +693,7 @@ async function loadLogs() {
     try {
         container.innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>Cargando logs...</p></div>';
         
-        const response = await fetch('/api/logs?limit=100');
+        const response = await fetchWithCredentials('/api/logs?limit=100');
         if (response.ok) {
             const logs = await response.json();
             if (logs && logs.length > 0) {
@@ -707,7 +715,7 @@ async function loadLogs() {
             
             document.getElementById('logLevelFilter').addEventListener('change', async (e) => {
                 const level = e.target.value;
-                const response = await fetch(`/api/logs?limit=100${level ? '&level=' + level : ''}`);
+                const response = await fetchWithCredentials(`/api/logs?limit=100${level ? '&level=' + level : ''}`);
                 if (response.ok) {
                     const logs = await response.json();
                     displayLogs(logs || []);
@@ -735,7 +743,7 @@ async function loadLogs() {
         // Actualizar logs cada 2 segundos
         logsInterval = setInterval(async () => {
             const level = document.getElementById('logLevelFilter').value;
-            const response = await fetch(`/api/logs?limit=100${level ? '&level=' + level : ''}`);
+            const response = await fetchWithCredentials(`/api/logs?limit=100${level ? '&level=' + level : ''}`);
             if (response.ok) {
                 const logs = await response.json();
                 if (logs && logs.length > 0) {
@@ -791,7 +799,7 @@ async function loadCommands() {
     try {
         container.innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>Cargando comandos...</p></div>';
         
-        const response = await fetch('/api/commands');
+        const response = await fetchWithCredentials('/api/commands');
         if (response.ok) {
             const commands = await response.json();
             if (commands && commands.length > 0) {
@@ -884,7 +892,7 @@ async function loadGuildsForServer() {
         serverInfoContainer.innerHTML = '';
         moderationContainer.innerHTML = '';
         
-        const response = await fetch('/api/guilds');
+        const response = await fetchWithCredentials('/api/guilds');
         if (response.ok) {
             const guilds = await response.json();
             if (guilds && guilds.length > 0) {
@@ -926,7 +934,7 @@ async function loadServerInfo(guildId) {
     const container = document.getElementById('serverInfoContainer');
     
     try {
-        const response = await fetch(`/api/guild/${guildId}/info`);
+        const response = await fetchWithCredentials(`/api/guild/${guildId}/info`);
         if (response.ok) {
             const info = await response.json();
             displayServerInfo(info);
@@ -988,7 +996,7 @@ async function loadServerMembers(guildId) {
     try {
         container.innerHTML = '<div class="loading"><div class="loading-spinner"></div><p>Cargando miembros...</p></div>';
         
-        const response = await fetch(`/api/guild/${guildId}/members`);
+        const response = await fetchWithCredentials(`/api/guild/${guildId}/members`);
         if (response.ok) {
             const members = await response.json();
             if (members && members.length > 0) {
@@ -1052,7 +1060,7 @@ function displayMembers(members, guildId) {
     // Buscar miembros
     document.getElementById('memberSearch').addEventListener('input', async (e) => {
         const query = e.target.value;
-        const response = await fetch(`/api/guild/${guildId}/members?q=${encodeURIComponent(query)}`);
+        const response = await fetchWithCredentials(`/api/guild/${guildId}/members?q=${encodeURIComponent(query)}`);
         if (response.ok) {
             const members = await response.json();
             displayMembers(members, guildId);
@@ -1066,7 +1074,7 @@ async function moderateUser(guildId, userId, action) {
     if (!reason) return;
     
     try {
-        const response = await fetch('/api/moderate', {
+        const response = await fetchWithCredentials('/api/moderate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ guildId, userId, action, reason })
