@@ -14,7 +14,11 @@ const app = express();
 // Si BOT_API_PORT está definido, estamos en modo API del bot (Docker)
 // Si no, estamos en modo panel web completo
 const PORT = process.env.BOT_API_PORT || process.env.WEB_PORT || 3000;
-const HOST = process.env.BOT_API_PORT ? (process.env.BOT_API_HOST || '0.0.0.0') : 'localhost';
+// En Docker, siempre usar 0.0.0.0 para que sea accesible desde fuera del contenedor
+// En desarrollo local, usar localhost
+const HOST = process.env.BOT_API_PORT 
+    ? (process.env.BOT_API_HOST || '0.0.0.0') 
+    : (process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost');
 
 // URL del bot API (para Docker) - Se conecta al contenedor bot en puerto 3001
 const BOT_URL = process.env.BOT_URL || null;
