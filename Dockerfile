@@ -1,5 +1,5 @@
 # Dockerfile para TulaBot
-FROM node:18-alpine
+FROM node:20-alpine 
 
 # Instalar dependencias del sistema para discord-player y ffmpeg
 RUN apk add --no-cache \
