@@ -7,10 +7,11 @@ services:
     container_name: tulabot-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-tulabot_root_password}
+      # Valores de seguridad de tu .env inyectados como fallbacks
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-1988431323.Mirut}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-tulabot}
       MYSQL_USER: ${MYSQL_USER:-tulabot}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-tulabot_password}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-1988431323.Mirut}
     volumes:
       - mysql_data:/var/lib/mysql
       - ./docker/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -19,7 +20,7 @@ services:
     networks:
       - tulabot-network
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-tulabot_root_password}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-1988431323.Mirut}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -36,33 +37,24 @@ services:
         condition: service_healthy
     environment:
       - NODE_ENV=production
-      - DISCORD_TOKEN=${DISCORD_TOKEN}
-      - CLIENT_ID=${CLIENT_ID}
+      - DISCORD_TOKEN=${DISCORD_TOKEN:-MTQ0NDUzMDc1MzE2ODg3MTQ4Nw.GL_4a9.yx9JH9MGWLXzXyfnIyTX0osNwthAZXyubVIwDM}
+      - CLIENT_ID=${CLIENT_ID:-1444530753168871487}
       - DEFAULT_PREFIX=${DEFAULT_PREFIX:-!}
       - TENOR_API_KEY=${TENOR_API_KEY:-}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-AIzaSyCJt3KD7hQf-P0hc5QFKi1jWOHCKu3Umo8}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
       - DB_HOST=mysql
       - DB_PORT=3306
+      # Variables de BD del bot (coinciden con MySQL)
       - DB_USER=${MYSQL_USER:-tulabot}
-      - DB_PASSWORD=${MYSQL_PASSWORD:-tulabot_password}
+      - DB_PASSWORD=${MYSQL_PASSWORD:-1988431323.Mirut}
       - DB_NAME=${MYSQL_DATABASE:-tulabot}
       - WEB_ENABLED=false
-      - BOT_API_PORT=3001
-      - BOT_API_HOST=0.0.0.0
-    ports:
-      - "${BOT_API_PORT:-3001}:3001"
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
     networks:
       - tulabot-network
-    healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
   # Panel Web
   web:
@@ -72,17 +64,17 @@ services:
     container_name: tulabot-web
     restart: unless-stopped
     depends_on:
-      bot:
-        condition: service_healthy
-      mysql:
-        condition: service_healthy
+      - bot
+      - mysql
     environment:
       - NODE_ENV=production
-      - CLIENT_ID=${CLIENT_ID}
-      - CLIENT_SECRET=${CLIENT_SECRET}
-      - REDIRECT_URI=${REDIRECT_URI:-http://localhost:3000/callback}
+      - CLIENT_ID=${CLIENT_ID:-1444530753168871487}
+      - CLIENT_SECRET=${CLIENT_SECRET:-mkTU6NhGmphccF-klXcp9kyjxQA9ql3N}
+      # URL de redirección específica inyectada
+      - REDIRECT_URI=${REDIRECT_URI:-http://192.168.50.197:3000/callback}
       - WEB_PORT=3000
-      - SESSION_SECRET=${SESSION_SECRET}
+      # SESSION_SECRET específico inyectado
+      - SESSION_SECRET=${SESSION_SECRET:-t1988431323.Mirut}
       - BOT_URL=http://bot:3001
     ports:
       - "${WEB_PORT:-3000}:3000"
@@ -90,12 +82,6 @@ services:
       - ./logs:/app/logs
     networks:
       - tulabot-network
-    healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
 networks:
   tulabot-network:
@@ -104,4 +90,3 @@ networks:
 volumes:
   mysql_data:
     driver: local
-
