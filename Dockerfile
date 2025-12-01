@@ -23,6 +23,9 @@ RUN npm ci --only=production
 COPY src/ ./src/
 COPY verificar-*.js ./
 
+# Copiar servidor API del bot (web/server.js como web_api.js)
+COPY web/server.js ./web_api.js
+
 # Crear directorios necesarios
 RUN mkdir -p logs data
 
