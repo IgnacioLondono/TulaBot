@@ -53,10 +53,10 @@ app.use(session({
     saveUninitialized: false,
     rolling: true, // Renovar la cookie en cada request
     cookie: {
-        secure: process.env.NODE_ENV === 'production', // false en desarrollo (http)
+        secure: false, // Siempre false para desarrollo (http) y para que funcione con IPs
         httpOnly: true,
         maxAge: 24 * 60 * 60 * 1000, // 24 horas
-        sameSite: 'lax', // Ayuda con redirecciones de OAuth
+        sameSite: 'lax', // 'lax' permite cookies en navegación de nivel superior (necesario para OAuth redirects)
         path: '/', // Asegurar que la cookie esté disponible en toda la aplicación
         domain: undefined // No establecer dominio para que funcione en cualquier subdominio/IP
     },
@@ -66,12 +66,24 @@ app.use(session({
 // Middleware de debugging para sesiones (solo en desarrollo)
 if (process.env.NODE_ENV !== 'production') {
     app.use((req, res, next) => {
-        if (req.path.startsWith('/api/')) {
+        // Log para todas las rutas importantes
+        if (req.path.startsWith('/api/') || req.path === '/' || req.path === '/callback') {
+            const cookies = req.headers.cookie || 'Ninguna';
+            const sessionCookie = cookies.includes('tulabot.session') 
+                ? cookies.split('tulabot.session=')[1]?.split(';')[0] 
+                : 'No encontrada';
+            
             console.log(`📋 Request a ${req.path}:`);
-            console.log(`   Cookie recibida: ${req.headers.cookie || 'Ninguna'}`);
+            console.log(`   Cookie recibida: ${cookies.substring(0, 100)}${cookies.length > 100 ? '...' : ''}`);
+            console.log(`   Session Cookie: ${sessionCookie}`);
             console.log(`   Session ID: ${req.sessionID}`);
             console.log(`   Usuario en sesión: ${req.session?.user ? req.session.user.username : 'No'}`);
             console.log(`   Autenticado: ${req.session?.authenticated || false}`);
+            
+            // Si hay una cookie de sesión pero no coincide con el sessionID, hay un problema
+            if (sessionCookie !== 'No encontrada' && sessionCookie !== req.sessionID) {
+                console.log(`   ⚠️ ADVERTENCIA: Cookie de sesión (${sessionCookie}) no coincide con Session ID (${req.sessionID})`);
+            }
         }
         next();
     });
@@ -191,6 +203,7 @@ app.get('/callback', async (req, res) => {
         req.session.loginTime = new Date().toISOString();
 
         // Guardar sesión y esperar a que se complete antes de redirigir
+        // express-session establecerá automáticamente la cookie cuando se guarde la sesión
         await new Promise((resolve, reject) => {
             req.session.save((err) => {
                 if (err) {
@@ -201,13 +214,29 @@ app.get('/callback', async (req, res) => {
                     console.log(`   Servidores: ${guilds?.length || 0}`);
                     console.log(`   Sesión ID: ${req.sessionID}`);
                     console.log(`   Sesión guardada correctamente`);
+                    
+                    // Verificar que la cookie se estableció
+                    const setCookieHeader = res.getHeader('Set-Cookie');
+                    if (setCookieHeader) {
+                        const cookies = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader];
+                        const sessionCookie = cookies.find(c => c.startsWith('tulabot.session='));
+                        if (sessionCookie) {
+                            console.log(`   ✅ Cookie establecida: ${sessionCookie.substring(0, 80)}...`);
+                        } else {
+                            console.log(`   ⚠️ Cookie de sesión no encontrada en Set-Cookie header`);
+                        }
+                    } else {
+                        console.log(`   ⚠️ Set-Cookie header no encontrado`);
+                    }
+                    
                     resolve();
                 }
             });
         });
         
         // Redirigir después de asegurar que la sesión se guardó
-        // express-session establecerá automáticamente la cookie
+        // La cookie debería estar establecida automáticamente por express-session
+        console.log(`   Redirigiendo a /...`);
         res.redirect('/');
     } catch (error) {
         console.error('❌ Error en callback:', error);
@@ -825,10 +854,22 @@ app.get('/login', (req, res) => {
 
 // Ruta principal - verificar autenticación antes de servir
 app.get('/', (req, res) => {
+    // Log para debugging
+    const cookies = req.headers.cookie || 'Ninguna';
+    const sessionCookie = cookies.includes('tulabot.session') 
+        ? cookies.split('tulabot.session=')[1]?.split(';')[0] 
+        : 'No encontrada';
+    
+    console.log(`📋 GET / - Cookie: ${sessionCookie}, Session ID: ${req.sessionID}, Usuario: ${req.session?.user?.username || 'No'}`);
+    
     if (!req.session.user || !req.session.authenticated) {
         console.log('⚠️ Intento de acceso a / sin autenticación');
+        console.log(`   Session ID en request: ${req.sessionID}`);
+        console.log(`   Cookie recibida: ${sessionCookie}`);
         return res.redirect('/login');
     }
+    
+    console.log(`✅ Sirviendo index.html para usuario autenticado: ${req.session.user.username}`);
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
