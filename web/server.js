@@ -46,13 +46,15 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Configuración de sesiones
 app.use(session({
     secret: process.env.SESSION_SECRET || 'tu-secret-super-seguro-cambiar-en-produccion',
-    resave: false,
+    resave: true, // Guardar sesión incluso si no se modificó
     saveUninitialized: false,
+    rolling: true, // Renovar la cookie en cada request
     cookie: {
         secure: process.env.NODE_ENV === 'production', // false en desarrollo (http)
         httpOnly: true,
         maxAge: 24 * 60 * 60 * 1000, // 24 horas
-        sameSite: 'lax' // Ayuda con redirecciones de OAuth
+        sameSite: 'lax', // Ayuda con redirecciones de OAuth
+        path: '/' // Asegurar que la cookie esté disponible en toda la aplicación
     },
     name: 'tulabot.session' // Nombre personalizado para la cookie
 }));
@@ -160,23 +162,53 @@ app.get('/callback', async (req, res) => {
             return res.redirect('/login?error=auth_failed');
         }
 
+        // Regenerar ID de sesión después de autenticación exitosa (mejora la seguridad)
+        await new Promise((resolve, reject) => {
+            req.session.regenerate((err) => {
+                if (err) {
+                    console.error('❌ Error regenerando sesión:', err);
+                    reject(err);
+                } else {
+                    resolve();
+                }
+            });
+        });
+
         // Guardar en sesión
         req.session.user = user;
         req.session.guilds = guilds || [];
         req.session.accessToken = tokenData.access_token;
+        req.session.authenticated = true;
+        req.session.loginTime = new Date().toISOString();
         delete req.session.oauthState; // Limpiar estado OAuth
 
-        // Guardar sesión antes de redirigir
-        req.session.save((err) => {
-            if (err) {
-                console.error('❌ Error guardando sesión:', err);
-                return res.redirect('/login?error=session_error');
-            }
-            console.log(`✅ Usuario autenticado: ${user.username}#${user.discriminator} (${user.id})`);
-            console.log(`   Servidores: ${guilds?.length || 0}`);
-            // Redirigir a la raíz en lugar de /dashboard
-            res.redirect('/');
+        // Guardar sesión antes de redirigir (usando promesa para asegurar que se guarde)
+        await new Promise((resolve, reject) => {
+            req.session.save((err) => {
+                if (err) {
+                    console.error('❌ Error guardando sesión:', err);
+                    reject(err);
+                } else {
+                    console.log(`✅ Usuario autenticado: ${user.username}#${user.discriminator} (${user.id})`);
+                    console.log(`   Servidores: ${guilds?.length || 0}`);
+                    console.log(`   Sesión guardada correctamente`);
+                    console.log(`   Cookie de sesión establecida`);
+                    resolve();
+                }
+            });
         });
+        
+        // Establecer manualmente la cookie para asegurar que se guarde
+        res.cookie('tulabot.session', req.sessionID, {
+            maxAge: 24 * 60 * 60 * 1000, // 24 horas
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/'
+        });
+        
+        // Redirigir después de asegurar que la sesión se guardó
+        res.redirect('/');
     } catch (error) {
         console.error('❌ Error en callback:', error);
         console.error('   Mensaje:', error.message);
@@ -202,8 +234,18 @@ app.get('/logout', (req, res) => {
 
 // Middleware para verificar autenticación
 function requireAuth(req, res, next) {
-    if (!req.session || !req.session.user) {
+    // Verificar que la sesión existe y tiene un usuario autenticado
+    if (!req.session || !req.session.user || !req.session.authenticated) {
         console.log('⚠️ Intento de acceso sin autenticación a:', req.path);
+        console.log('   Sesión ID:', req.sessionID);
+        console.log('   Usuario en sesión:', req.session?.user ? 'Presente' : 'Ausente');
+        console.log('   Autenticado:', req.session?.authenticated || false);
+        
+        // Si es una ruta API, devolver error JSON en lugar de redirigir
+        if (req.path.startsWith('/api/')) {
+            return res.status(401).json({ error: 'No autenticado', redirect: '/login' });
+        }
+        // Para rutas normales, redirigir a login
         return res.redirect('/login');
     }
     next();
@@ -775,7 +817,7 @@ app.get('/api/guild/:guildId/members', requireAuth, async (req, res) => {
 // Ruta para login (mostrar página de login)
 app.get('/login', (req, res) => {
     // Si ya está autenticado, redirigir al dashboard
-    if (req.session.user) {
+    if (req.session.user && req.session.authenticated) {
         return res.redirect('/');
     }
     res.sendFile(path.join(__dirname, 'public', 'login.html'));
@@ -783,7 +825,8 @@ app.get('/login', (req, res) => {
 
 // Ruta principal - verificar autenticación antes de servir
 app.get('/', (req, res) => {
-    if (!req.session.user) {
+    if (!req.session.user || !req.session.authenticated) {
+        console.log('⚠️ Intento de acceso a / sin autenticación');
         return res.redirect('/login');
     }
     res.sendFile(path.join(__dirname, 'public', 'index.html'));

@@ -171,7 +171,13 @@ function restoreServerState(state) {
 
 // Inicialización
 document.addEventListener('DOMContentLoaded', async () => {
-    await checkAuth();
+    const isAuthenticated = await checkAuth();
+    
+    // Solo continuar si el usuario está autenticado
+    if (!isAuthenticated) {
+        return; // No cargar datos si no hay autenticación
+    }
+    
     setupEventListeners();
     
     // Cargar estado guardado
@@ -205,12 +211,31 @@ async function checkAuth() {
             currentUser = data.user;
             currentGuilds = data.guilds || [];
             updateUserUI();
+            return true;
+        } else if (response.status === 401) {
+            // No autenticado, redirigir a login solo una vez
+            const data = await response.json().catch(() => ({}));
+            if (data.redirect) {
+                window.location.href = data.redirect;
+            } else {
+                window.location.href = '/login';
+            }
+            return false;
         } else {
-            window.location.href = '/login';
+            console.error('Error verificando autenticación:', response.status);
+            // Solo redirigir si no estamos ya en la página de login
+            if (!window.location.pathname.includes('login')) {
+                window.location.href = '/login';
+            }
+            return false;
         }
     } catch (error) {
         console.error('Error verificando autenticación:', error);
-        window.location.href = '/login';
+        // Solo redirigir si no estamos ya en la página de login
+        if (!window.location.pathname.includes('login')) {
+            window.location.href = '/login';
+        }
+        return false;
     }
 }
 
