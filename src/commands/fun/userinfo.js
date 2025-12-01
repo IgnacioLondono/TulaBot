@@ -16,7 +16,7 @@ module.exports = {
 
         if (!member) {
             return interaction.reply({
-                embeds: [new EmbedBuilder().setColor('#FFA500').setTitle('❌ Error').setDescription('Usuario no encontrado en el servidor.')],
+                embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('❌ Error').setDescription('Usuario no encontrado en el servidor.')],
                 flags: 64
             });
         }

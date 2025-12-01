@@ -22,7 +22,7 @@ module.exports = {
 
             if (!definitions || definitions.length === 0) {
                 return interaction.editReply({
-                    embeds: [new EmbedBuilder().setColor('#FFA500').setTitle('❌ Error').setDescription('No se encontró ninguna definición.')]
+                    embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('❌ Error').setDescription('No se encontró ninguna definición.')]
                 });
             }
 
@@ -43,7 +43,7 @@ module.exports = {
             return interaction.editReply({ embeds: [embed] });
         } catch (error) {
             return interaction.editReply({
-                embeds: [new EmbedBuilder().setColor('#FFA500').setTitle('❌ Error').setDescription('No se pudo buscar la definición.')]
+                embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('❌ Error').setDescription('No se pudo buscar la definición.')]
             });
         }
     }

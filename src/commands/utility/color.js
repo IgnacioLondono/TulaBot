@@ -14,7 +14,7 @@ module.exports = {
         
         if (!/^[0-9A-F]{6}$/i.test(hex)) {
             return interaction.reply({
-                embeds: [new EmbedBuilder().setColor('#FFA500').setTitle('❌ Error').setDescription('Formato inválido. Usa formato hexadecimal (ej: #FF5733)')],
+                embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('❌ Error').setDescription('Formato inválido. Usa formato hexadecimal (ej: #FF5733)')],
                 flags: 64
             });
         }

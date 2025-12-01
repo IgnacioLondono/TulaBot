@@ -36,7 +36,7 @@ module.exports = {
             return interaction.reply({ embeds: [embed] });
         } catch (error) {
             return interaction.reply({
-                embeds: [new EmbedBuilder().setColor('#FFA500').setTitle('❌ Error').setDescription('No se pudo traducir el texto.')],
+                embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('❌ Error').setDescription('No se pudo traducir el texto.')],
                 flags: 64
             });
         }

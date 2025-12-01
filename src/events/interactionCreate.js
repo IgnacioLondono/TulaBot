@@ -40,7 +40,7 @@ module.exports = {
                 if (userId !== interaction.user.id) {
                     try {
                         return await interaction.reply({
-                            embeds: [new EmbedBuilder().setColor('#FFA500').setTitle('❌ Error').setDescription('Este mensaje no es para ti.')],
+                            embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('❌ Error').setDescription('Este mensaje no es para ti.')],
                             flags: 64
                         });
                     } catch (e) {
@@ -55,7 +55,7 @@ module.exports = {
                 if (!searchData) {
                     try {
                         return await interaction.reply({
-                            embeds: [new EmbedBuilder().setColor('#FFA500').setTitle('❌ Error').setDescription('Los resultados de búsqueda expiraron. Busca nuevamente.')],
+                            embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('❌ Error').setDescription('Los resultados de búsqueda expiraron. Busca nuevamente.')],
                             flags: 64
                         });
                     } catch (e) {
@@ -68,7 +68,7 @@ module.exports = {
                 if (!selectedTrack) {
                     try {
                         return await interaction.reply({
-                            embeds: [new EmbedBuilder().setColor('#FFA500').setTitle('❌ Error').setDescription('Resultado no válido.')],
+                            embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('❌ Error').setDescription('Resultado no válido.')],
                             flags: 64
                         });
                     } catch (e) {
@@ -219,21 +219,21 @@ module.exports = {
                 
                 if (!triviaData) {
                     return interaction.reply({
-                        embeds: [new EmbedBuilder().setColor('#FFA500').setTitle('❌ Error').setDescription('Esta trivia ya expiró.')],
+                        embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('❌ Error').setDescription('Esta trivia ya expiró.')],
                         flags: 64
                     });
                 }
 
                 const answerIndex = parseInt(interaction.customId.split('_')[1]);
                 const selectedAnswer = triviaData.answers[answerIndex];
-                const isCorrect = selectedAnswer === triviaData.correct;
+                const isCorrect = answerIndex === triviaData.correctIndex || selectedAnswer === triviaData.correct;
 
                 const embed = new EmbedBuilder()
-                    .setColor('#FFA500')
+                    .setColor(isCorrect ? config.embedColor : '#FF0000')
                     .setTitle(isCorrect ? '✅ ¡Correcto!' : '❌ Incorrecto')
                     .setDescription(isCorrect 
                         ? `¡Bien hecho, ${interaction.user}! La respuesta correcta era: **${triviaData.correct}**`
-                        : `Lo siento, la respuesta correcta era: **${triviaData.correct}**`)
+                        : `Lo siento ${interaction.user}, la respuesta correcta era: **${triviaData.correct}**`)
                     .setFooter({ text: `Respondido por ${interaction.user.tag}` });
 
                 await interaction.reply({ embeds: [embed], flags: 64 });

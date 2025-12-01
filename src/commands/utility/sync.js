@@ -91,7 +91,7 @@ module.exports = {
             }
             
             const embed = new EmbedBuilder()
-                .setColor('#FFA500')
+                .setColor('#FF0000')
                 .setTitle('❌ Error al Sincronizar')
                 .setDescription(`Ocurrió un error al sincronizar los comandos.\n\`\`\`${error.message.substring(0, 1000)}\`\`\``)
                 .setFooter({ text: 'Verifica la consola para más detalles' });

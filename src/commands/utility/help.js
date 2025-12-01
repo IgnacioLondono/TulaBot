@@ -97,7 +97,7 @@ module.exports = {
             console.error('Error en help:', error);
             return interaction.reply({
                 embeds: [new EmbedBuilder()
-                    .setColor('#FFA500')
+                    .setColor('#FF0000')
                     .setTitle('❌ Error')
                     .setDescription('Ocurrió un error al mostrar la ayuda.')],
                 flags: 64

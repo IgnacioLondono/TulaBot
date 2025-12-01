@@ -23,7 +23,7 @@ module.exports = {
             return interaction.editReply({ embeds: [embed] });
         } catch (error) {
             return interaction.editReply({
-                embeds: [new EmbedBuilder().setColor('#FFA500').setTitle('❌ Error').setDescription('No se pudo obtener la imagen.')]
+                embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('❌ Error').setDescription('No se pudo obtener la imagen.')]
             });
         }
     }

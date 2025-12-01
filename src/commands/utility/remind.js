@@ -23,7 +23,7 @@ module.exports = {
         const timeMs = ms(time);
         if (!timeMs || timeMs < 1000) {
             return interaction.reply({
-                embeds: [new EmbedBuilder().setColor('#FFA500').setTitle('❌ Error').setDescription('Tiempo inválido. Usa formato como: 10m, 1h, 2d')],
+                embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('❌ Error').setDescription('Tiempo inválido. Usa formato como: 10m, 1h, 2d')],
                 flags: 64
             });
         }

@@ -26,7 +26,7 @@ module.exports = {
 
         if (!channel.isTextBased()) {
             return interaction.reply({
-                embeds: [new EmbedBuilder().setColor('#FFA500').setTitle('Error').setDescription('El canal debe ser de texto.')],
+                embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('Error').setDescription('El canal debe ser de texto.')],
                 flags: 64
             });
         }
@@ -41,12 +41,12 @@ module.exports = {
         try {
             await channel.send({ embeds: [embed] });
             return interaction.reply({
-                embeds: [new EmbedBuilder().setColor('#FFA500').setTitle('✅ Anuncio Enviado').setDescription(`Anuncio enviado a ${channel}.`)],
+                embeds: [new EmbedBuilder().setColor(config.embedColor).setTitle('✅ Anuncio Enviado').setDescription(`Anuncio enviado a ${channel}.`)],
                 flags: 64
             });
         } catch (error) {
             return interaction.reply({
-                embeds: [new EmbedBuilder().setColor('#FFA500').setTitle('Error').setDescription('No se pudo enviar el anuncio.')],
+                embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('Error').setDescription('No se pudo enviar el anuncio.')],
                 flags: 64
             });
         }

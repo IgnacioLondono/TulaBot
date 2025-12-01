@@ -16,7 +16,7 @@ module.exports = {
 
         if (options.length < 2) {
             return interaction.reply({
-                embeds: [new EmbedBuilder().setColor('#FFA500').setTitle('❌ Error').setDescription('Debes proporcionar al menos 2 opciones separadas por coma.')],
+                embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('❌ Error').setDescription('Debes proporcionar al menos 2 opciones separadas por coma.')],
                 flags: 64
             });
         }

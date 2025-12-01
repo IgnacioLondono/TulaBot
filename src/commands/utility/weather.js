@@ -25,7 +25,7 @@ module.exports = {
 
             if (!data || !data.current_condition || !data.current_condition[0]) {
                 return interaction.editReply({
-                    embeds: [new EmbedBuilder().setColor('#FFA500').setTitle('❌ Error').setDescription('No se pudo obtener el clima. Verifica el nombre de la ciudad.')]
+                    embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('❌ Error').setDescription('No se pudo obtener el clima. Verifica el nombre de la ciudad.')]
                 });
             }
 
@@ -34,7 +34,7 @@ module.exports = {
 
             if (!location) {
                 return interaction.editReply({
-                    embeds: [new EmbedBuilder().setColor('#FFA500').setTitle('❌ Error').setDescription('No se pudo obtener la ubicación. Verifica el nombre de la ciudad.')]
+                    embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('❌ Error').setDescription('No se pudo obtener la ubicación. Verifica el nombre de la ciudad.')]
                 });
             }
 
@@ -54,7 +54,7 @@ module.exports = {
         } catch (error) {
             console.error('Error en weather:', error);
             return interaction.editReply({
-                embeds: [new EmbedBuilder().setColor('#FFA500').setTitle('❌ Error').setDescription('No se pudo obtener el clima. Verifica el nombre de la ciudad.')]
+                embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('❌ Error').setDescription('No se pudo obtener el clima. Verifica el nombre de la ciudad.')]
             });
         }
     }

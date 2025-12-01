@@ -194,53 +194,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Guardar estado periódicamente y en eventos
     setInterval(saveState, 2000); // Guardar cada 2 segundos
-    
-    // Verificar estado del bot cada 2 segundos
-    setInterval(async () => {
-        try {
-            const response = await fetch('/api/bot-status');
-            if (response.ok) {
-                const status = await response.json();
-                if (status.ready) {
-                    // Bot está listo, actualizar datos según la sección activa
-                    const activeSection = document.querySelector('.section.active')?.id;
-                    if (!activeSection) return;
-                    
-                    switch(activeSection) {
-                        case 'dashboard':
-                            await loadGuilds();
-                            await loadStats();
-                            break;
-                        case 'statsSection':
-                            await loadStats();
-                            break;
-                        case 'embedSection':
-                            await loadGuildsForEmbed();
-                            const guildSelect = document.getElementById('guildSelect')?.value;
-                            if (guildSelect) {
-                                await handleGuildSelect();
-                            }
-                            break;
-                        case 'logsSection':
-                            // Los logs ya se actualizan automáticamente cada 2 segundos
-                            break;
-                        case 'commandsSection':
-                            await loadCommands();
-                            break;
-                        case 'serverSection':
-                            const selectedGuildId = document.getElementById('serverSelect')?.value;
-                            if (selectedGuildId) {
-                                await loadServerInfo(selectedGuildId);
-                                await loadServerMembers(selectedGuildId);
-                            }
-                            break;
-                    }
-                }
-            }
-        } catch (error) {
-            console.error('Error verificando estado del bot:', error);
-        }
-    }, 2000); // Verificar cada 2 segundos
 });
 
 // Verificar autenticación
@@ -409,13 +362,7 @@ async function loadGuilds() {
             const guilds = await response.json();
             displayGuilds(guilds);
         } else {
-            const error = await response.json().catch(() => ({ error: 'Error desconocido' }));
-            if (response.status === 503) {
-                const container = document.getElementById('guildsList');
-                container.innerHTML = '<div class="loading"><p style="color: var(--fate-gold);">⏳ Esperando conexión del bot...</p></div>';
-            } else {
-                showToast(error.error || 'Error al cargar servidores', 'error');
-            }
+            showToast('Error al cargar servidores', 'error');
         }
     } catch (error) {
         console.error('Error cargando servidores:', error);
@@ -695,14 +642,6 @@ async function loadStats() {
                     </div>
                 `;
             }
-        } else if (response.status === 503) {
-            // Bot no disponible
-            document.getElementById('statGuilds').textContent = '⏳';
-            document.getElementById('statUsers').textContent = '⏳';
-            document.getElementById('statChannels').textContent = '⏳';
-            document.getElementById('statPing').textContent = '⏳';
-            document.getElementById('statCommands').textContent = '⏳';
-            document.getElementById('statUptime').textContent = '⏳';
         }
     } catch (error) {
         console.error('Error cargando estadísticas:', error);
@@ -837,11 +776,7 @@ async function loadCommands() {
             }
         } else {
             const error = await response.json().catch(() => ({ error: 'Error al cargar comandos' }));
-            if (response.status === 503) {
-                container.innerHTML = '<div style="text-align: center; padding: 3rem; color: var(--fate-gold);"><p>⏳ Esperando conexión del bot...</p></div>';
-            } else {
-                container.innerHTML = `<div style="text-align: center; padding: 3rem; color: var(--error-color);"><p>${error.error || 'Error al cargar comandos'}</p></div>`;
-            }
+            container.innerHTML = `<div style="text-align: center; padding: 3rem; color: var(--error-color);"><p>${error.error || 'Error al cargar comandos'}</p></div>`;
         }
     } catch (error) {
         console.error('Error cargando comandos:', error);

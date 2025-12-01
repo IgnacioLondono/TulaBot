@@ -33,12 +33,18 @@ module.exports = {
 
         if (!emojified) {
             return interaction.reply({
-                embeds: [new EmbedBuilder().setColor('#FFA500').setTitle('❌ Error').setDescription('No se pudo convertir el texto.')],
+                embeds: [new EmbedBuilder().setColor('#FF0000').setTitle('❌ Error').setDescription('No se pudo convertir el texto.')],
                 flags: 64
             });
         }
 
-        return interaction.reply(emojified);
+        const embed = new EmbedBuilder()
+            .setColor(config.embedColor)
+            .setTitle('✨ Texto Emojificado')
+            .setDescription(emojified)
+            .setFooter({ text: `Solicitado por ${interaction.user.tag}` });
+
+        return interaction.reply({ embeds: [embed] });
     }
 };
 

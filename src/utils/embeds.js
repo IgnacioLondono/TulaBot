@@ -4,7 +4,7 @@ const config = require('../config');
 class Embeds {
     static success(title, description) {
         return new EmbedBuilder()
-            .setColor('#FFA500')
+            .setColor(config.embedColor) // Azul para éxito
             .setTitle(`✅ ${title}`)
             .setDescription(description)
             .setTimestamp();
@@ -12,7 +12,7 @@ class Embeds {
 
     static error(title, description) {
         return new EmbedBuilder()
-            .setColor('#FFA500')
+            .setColor('#FF0000') // Rojo para errores
             .setTitle(`❌ ${title}`)
             .setDescription(description)
             .setTimestamp();
@@ -28,7 +28,7 @@ class Embeds {
 
     static warning(title, description) {
         return new EmbedBuilder()
-            .setColor('#FFA500')
+            .setColor('#FFAA00') // Naranja para advertencias
             .setTitle(`⚠️ ${title}`)
             .setDescription(description)
             .setTimestamp();

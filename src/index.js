@@ -251,17 +251,22 @@ process.on('unhandledRejection', error => {
     console.error('Error no manejado:', error);
 });
 
-// Iniciar servidor API Express (siempre, para acceso desde otros contenedores)
-// El botClient se inyectará cuando el bot esté listo (en el evento 'ready')
-try {
-    // El servidor API se inicia siempre, independientemente de WEB_ENABLED
-    // WEB_ENABLED solo controla si se sirve el frontend
-    require('../web/server');
-    const apiPort = process.env.BOT_API_PORT || (process.env.WEB_ENABLED === 'true' ? (process.env.WEB_PORT || 3000) : 3001);
-    console.log(`🌐 Servidor API iniciado en puerto ${apiPort} (esperando conexión del bot...)`);
-} catch (error) {
-    console.error('⚠️ Error iniciando servidor API:', error.message);
-    console.log('💡 El bot continuará funcionando sin el servidor API.');
+// Iniciar servidor web (solo si está habilitado)
+// El módulo solo se carga si WEB_ENABLED es 'true' para evitar errores
+if (process.env.WEB_ENABLED === 'true') {
+    try {
+        // Cargar el módulo solo cuando WEB_ENABLED es true
+        const { setBotClient } = require('../web/server');
+        // El servidor se inicia automáticamente al requerir el módulo
+        // La inyección del cliente se hará en el evento 'ready' cuando el bot esté completamente inicializado
+        client.once('ready', () => {
+            setBotClient(client);
+        });
+    } catch (error) {
+        console.error('⚠️ Error iniciando panel web:', error.message);
+        console.log('💡 El bot continuará funcionando sin el panel web.');
+        console.log('💡 Para habilitarlo, verifica la configuración en .env');
+    }
 }
 
 client.login(process.env.DISCORD_TOKEN);

@@ -8,7 +8,7 @@ module.exports = {
     cooldown: 3,
     async execute(interaction) {
         const result = Math.random() < 0.5 ? 'Cara' : 'Cruz';
-        const emoji = result === 'Cara' ? '🪙' : '🪙';
+        const emoji = result === 'Cara' ? '🟡' : '⚫';
 
         const embed = new EmbedBuilder()
             .setColor(config.embedColor)
