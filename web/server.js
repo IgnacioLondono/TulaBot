@@ -6,6 +6,7 @@ const express = require('express');
 const session = require('express-session');
 const DiscordOauth2 = require('discord-oauth2');
 const cors = require('cors');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.WEB_PORT || 3000;
@@ -39,6 +40,42 @@ app.use(session({
 let botClient = null;
 
 function setBotClient(client) { botClient = client; }
+
+// Almacenar logs recientes
+const recentLogs = [];
+const MAX_LOGS = 500;
+
+// Interceptar console.log para capturar logs
+const originalLog = console.log;
+const originalError = console.error;
+const originalWarn = console.warn;
+
+function addLog(level, message) {
+    const logEntry = {
+        timestamp: new Date().toISOString(),
+        level,
+        message: typeof message === 'string' ? message : JSON.stringify(message)
+    };
+    recentLogs.push(logEntry);
+    if (recentLogs.length > MAX_LOGS) {
+        recentLogs.shift();
+    }
+}
+
+console.log = function(...args) {
+    originalLog.apply(console, args);
+    addLog('info', args.join(' '));
+};
+
+console.error = function(...args) {
+    originalError.apply(console, args);
+    addLog('error', args.join(' '));
+};
+
+console.warn = function(...args) {
+    originalWarn.apply(console, args);
+    addLog('warn', args.join(' '));
+};
 
 // Rutas de login y callback
 app.get('/login', (req, res) => {
@@ -113,6 +150,105 @@ app.get('/api/guilds', requireAuth, async (req, res) => {
     }
 });
 
+app.get('/api/guild/:guildId/channels', requireAuth, async (req, res) => {
+    try {
+        const { guildId } = req.params;
+        
+        if (!botClient) {
+            return res.status(500).json({ error: 'Bot no disponible' });
+        }
+
+        const guild = botClient.guilds.cache.get(guildId);
+        if (!guild) {
+            return res.status(404).json({ error: 'Servidor no encontrado' });
+        }
+
+        // Verificar que el usuario tenga permisos en el servidor
+        const userGuild = req.session.guilds?.find(g => g.id === guildId);
+        if (!userGuild) {
+            return res.status(403).json({ error: 'No tienes acceso a este servidor' });
+        }
+
+        const channels = guild.channels.cache
+            .filter(channel => channel.type === 0 || channel.type === 2) // Solo texto y voz
+            .map(channel => ({
+                id: channel.id,
+                name: channel.name,
+                type: channel.type,
+                typeName: channel.type === 0 ? 'texto' : 'voz'
+            }));
+
+        res.json(channels);
+    } catch (error) {
+        console.error('Error obteniendo canales:', error);
+        res.status(500).json({ error: 'Error al obtener canales' });
+    }
+});
+
+app.post('/api/send-embed', requireAuth, async (req, res) => {
+    try {
+        const { guildId, channelId, embed } = req.body;
+
+        if (!botClient) {
+            return res.status(500).json({ error: 'Bot no disponible' });
+        }
+
+        const guild = botClient.guilds.cache.get(guildId);
+        if (!guild) {
+            return res.status(404).json({ error: 'Servidor no encontrado' });
+        }
+
+        const channel = guild.channels.cache.get(channelId);
+        if (!channel) {
+            return res.status(404).json({ error: 'Canal no encontrado' });
+        }
+
+        // Verificar permisos
+        if (!channel.permissionsFor(guild.members.me)?.has(['SendMessages', 'EmbedLinks'])) {
+            return res.status(403).json({ error: 'El bot no tiene permisos en este canal' });
+        }
+
+        // Crear embed usando discord.js
+        const { EmbedBuilder } = require('discord.js');
+        const discordEmbed = new EmbedBuilder();
+
+        if (embed.title) discordEmbed.setTitle(embed.title);
+        if (embed.description) discordEmbed.setDescription(embed.description);
+        if (embed.color) discordEmbed.setColor(parseInt(embed.color, 16));
+        if (embed.footer) discordEmbed.setFooter({ text: embed.footer });
+        if (embed.image) discordEmbed.setImage(embed.image);
+        if (embed.thumbnail) discordEmbed.setThumbnail(embed.thumbnail);
+        if (embed.timestamp) discordEmbed.setTimestamp();
+        if (embed.author) {
+            discordEmbed.setAuthor({
+                name: embed.author.name || '',
+                iconURL: embed.author.iconURL,
+                url: embed.author.url
+            });
+        }
+        if (embed.fields && Array.isArray(embed.fields)) {
+            embed.fields.forEach(field => {
+                if (field.name && field.value) {
+                    discordEmbed.addFields({
+                        name: field.name,
+                        value: field.value,
+                        inline: field.inline || false
+                    });
+                }
+            });
+        }
+
+        await channel.send({ embeds: [discordEmbed] });
+
+        console.log(`[Embed] ${req.session.user.username} envió un embed en ${guild.name}/${channel.name}`);
+
+        res.json({ success: true, message: 'Embed enviado correctamente' });
+    } catch (error) {
+        console.error('Error enviando embed:', error);
+        res.status(500).json({ error: error.message || 'Error al enviar embed' });
+    }
+});
+
 app.get('/api/stats', requireAuth, (req, res) => {
     if (!botClient) {
         return res.status(500).json({ error: 'Bot no disponible' });
@@ -128,6 +264,214 @@ app.get('/api/stats', requireAuth, (req, res) => {
         nodeVersion: process.version,
         platform: process.platform
     });
+});
+
+app.get('/api/logs', requireAuth, (req, res) => {
+    const limit = parseInt(req.query.limit) || 100;
+    const level = req.query.level;
+    
+    let logs = recentLogs.slice(-limit);
+    if (level) {
+        logs = logs.filter(log => log.level === level);
+    }
+    
+    res.json(logs.reverse());
+});
+
+app.get('/api/commands', requireAuth, (req, res) => {
+    if (!botClient || !botClient.commands) {
+        return res.status(500).json({ error: 'Bot no disponible' });
+    }
+
+    const commandsPath = path.join(__dirname, '..', 'src', 'commands');
+    
+    const commands = Array.from(botClient.commands.values()).map(cmd => {
+        // Intentar obtener la categoría de la ruta del archivo
+        let category = 'other';
+        
+        // Buscar el archivo del comando en las carpetas
+        try {
+            const categories = ['config', 'fun', 'moderation', 'music', 'utility'];
+            for (const cat of categories) {
+                const catPath = path.join(commandsPath, cat);
+                if (fs.existsSync(catPath)) {
+                    const files = fs.readdirSync(catPath);
+                    if (files.includes(`${cmd.data.name}.js`)) {
+                        category = cat;
+                        break;
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Error determinando categoría:', e);
+        }
+        
+        return {
+            name: cmd.data.name,
+            description: cmd.data.description || 'Sin descripción',
+            category: category,
+            options: (cmd.data.options || []).map(opt => ({
+                name: opt.name,
+                description: opt.description || 'Sin descripción',
+                type: opt.type,
+                required: opt.required || false
+            }))
+        };
+    });
+
+    res.json(commands);
+});
+
+app.get('/api/guild/:guildId/info', requireAuth, async (req, res) => {
+    try {
+        const { guildId } = req.params;
+        
+        if (!botClient) {
+            return res.status(500).json({ error: 'Bot no disponible' });
+        }
+
+        const guild = botClient.guilds.cache.get(guildId);
+        if (!guild) {
+            return res.status(404).json({ error: 'Servidor no encontrado' });
+        }
+
+        const userGuild = req.session.guilds?.find(g => g.id === guildId);
+        if (!userGuild) {
+            return res.status(403).json({ error: 'No tienes acceso a este servidor' });
+        }
+
+        const info = {
+            id: guild.id,
+            name: guild.name,
+            icon: guild.iconURL({ dynamic: true, size: 256 }),
+            owner: {
+                id: guild.ownerId,
+                tag: guild.members.cache.get(guild.ownerId)?.user?.tag || 'Desconocido'
+            },
+            memberCount: guild.memberCount,
+            channelCount: guild.channels.cache.size,
+            roleCount: guild.roles.cache.size,
+            createdAt: guild.createdAt.toISOString(),
+            features: guild.features,
+            verificationLevel: guild.verificationLevel,
+            premiumTier: guild.premiumTier,
+            premiumSubscriptionCount: guild.premiumSubscriptionCount || 0,
+            channels: {
+                text: guild.channels.cache.filter(c => c.type === 0).size,
+                voice: guild.channels.cache.filter(c => c.type === 2).size,
+                category: guild.channels.cache.filter(c => c.type === 4).size
+            },
+            roles: guild.roles.cache.map(role => ({
+                id: role.id,
+                name: role.name,
+                color: role.hexColor,
+                position: role.position,
+                members: role.members.size
+            })).sort((a, b) => b.position - a.position).slice(0, 20),
+            emojis: guild.emojis.cache.size,
+            stickers: guild.stickers?.cache?.size || 0
+        };
+
+        res.json(info);
+    } catch (error) {
+        console.error('Error obteniendo información del servidor:', error);
+        res.status(500).json({ error: 'Error al obtener información del servidor' });
+    }
+});
+
+app.post('/api/moderate', requireAuth, async (req, res) => {
+    try {
+        const { guildId, action, userId, reason } = req.body;
+
+        if (!botClient) {
+            return res.status(500).json({ error: 'Bot no disponible' });
+        }
+
+        const guild = botClient.guilds.cache.get(guildId);
+        if (!guild) {
+            return res.status(404).json({ error: 'Servidor no encontrado' });
+        }
+
+        const member = await guild.members.fetch(userId).catch(() => null);
+        if (!member) {
+            return res.status(404).json({ error: 'Usuario no encontrado' });
+        }
+
+        const moderator = req.session.user.username;
+        const actionReason = reason || `Moderado por ${moderator} desde el panel web`;
+
+        let result;
+        switch (action) {
+            case 'kick':
+                await member.kick(actionReason);
+                result = { success: true, message: `Usuario ${member.user.tag} expulsado` };
+                break;
+            case 'ban':
+                await member.ban({ reason: actionReason });
+                result = { success: true, message: `Usuario ${member.user.tag} baneado` };
+                break;
+            case 'timeout':
+                const duration = req.body.duration || 600000; // 10 minutos por defecto
+                await member.timeout(duration, actionReason);
+                result = { success: true, message: `Usuario ${member.user.tag} silenciado` };
+                break;
+            case 'removeTimeout':
+                await member.timeout(null);
+                result = { success: true, message: `Timeout removido de ${member.user.tag}` };
+                break;
+            default:
+                return res.status(400).json({ error: 'Acción no válida' });
+        }
+
+        console.log(`[Moderación] ${moderator} ejecutó ${action} en ${member.user.tag} en ${guild.name}`);
+        res.json(result);
+    } catch (error) {
+        console.error('Error en moderación:', error);
+        res.status(500).json({ error: error.message || 'Error al ejecutar acción de moderación' });
+    }
+});
+
+app.get('/api/guild/:guildId/members', requireAuth, async (req, res) => {
+    try {
+        const { guildId } = req.params;
+        const query = req.query.q || '';
+        
+        if (!botClient) {
+            return res.status(500).json({ error: 'Bot no disponible' });
+        }
+
+        const guild = botClient.guilds.cache.get(guildId);
+        if (!guild) {
+            return res.status(404).json({ error: 'Servidor no encontrado' });
+        }
+
+        await guild.members.fetch();
+        
+        let members = Array.from(guild.members.cache.values())
+            .filter(m => !m.user.bot)
+            .map(m => ({
+                id: m.user.id,
+                username: m.user.username,
+                discriminator: m.user.discriminator,
+                tag: m.user.tag,
+                avatar: m.user.displayAvatarURL({ dynamic: true }),
+                joinedAt: m.joinedAt?.toISOString(),
+                roles: m.roles.cache.map(r => ({ id: r.id, name: r.name, color: r.hexColor }))
+            }));
+
+        if (query) {
+            const lowerQuery = query.toLowerCase();
+            members = members.filter(m => 
+                m.username.toLowerCase().includes(lowerQuery) ||
+                m.tag.toLowerCase().includes(lowerQuery)
+            );
+        }
+
+        res.json(members.slice(0, 50));
+    } catch (error) {
+        console.error('Error obteniendo miembros:', error);
+        res.status(500).json({ error: 'Error al obtener miembros' });
+    }
 });
 
 // Ruta principal
