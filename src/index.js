@@ -253,8 +253,18 @@ process.on('unhandledRejection', error => {
 
 // Iniciar servidor API del bot
 // El servidor API debe iniciarse cuando BOT_API_PORT está definido (modo Docker)
+// En Docker, el archivo web/server.js se copia como web_api.js en la raíz del proyecto
 try {
-    const { setBotClient, startServer } = require('../web/server');
+    // Intentar cargar desde web_api.js (Docker) o web/server.js (desarrollo)
+    let apiModule;
+    try {
+        apiModule = require('../web_api');
+    } catch (e) {
+        // Fallback a la ruta de desarrollo
+        apiModule = require('../web/server');
+    }
+    
+    const { setBotClient, startServer } = apiModule;
     
     // Inyectar cliente e iniciar servidor cuando el bot esté listo
     client.once('ready', () => {
@@ -276,7 +286,7 @@ try {
 } catch (error) {
     console.error('⚠️ Error cargando módulo del servidor API:', error.message);
     console.log('💡 El bot continuará funcionando, pero el panel web no estará disponible.');
-    console.log('💡 Verifica que el módulo web/server.js exista y esté correctamente configurado.');
+    console.log('💡 Verifica que el módulo web_api.js o web/server.js exista y esté correctamente configurado.');
 }
 
 client.login(process.env.DISCORD_TOKEN);
