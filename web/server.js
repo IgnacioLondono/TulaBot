@@ -9,37 +9,55 @@ const cors = require('cors');
 const fs = require('fs');
 
 const app = express();
-const PORT = process.env.WEB_PORT || 3000;
 
-if (!process.env.CLIENT_ID || !process.env.CLIENT_SECRET) {
-    console.error('❌ Faltan CLIENT_ID o CLIENT_SECRET en .env');
-    process.exit(1);
+// Determinar el puerto: BOT_API_PORT para el contenedor del bot, WEB_PORT para el frontend
+// En Docker, el bot usa 3001 y el frontend usa 3000
+const PORT = process.env.BOT_API_PORT || (process.env.WEB_ENABLED === 'true' ? (process.env.WEB_PORT || 3000) : 3001);
+const WEB_ENABLED = process.env.WEB_ENABLED === 'true';
+
+// Solo requerir CLIENT_ID y CLIENT_SECRET si el frontend está habilitado
+if (WEB_ENABLED) {
+    if (!process.env.CLIENT_ID || !process.env.CLIENT_SECRET) {
+        console.error('❌ Faltan CLIENT_ID o CLIENT_SECRET en .env (requeridos para frontend)');
+        process.exit(1);
+    }
 }
 
-const redirectUri = process.env.REDIRECT_URI || `http://localhost:${PORT}/callback`;
-
-const oauth = new DiscordOauth2({
-    clientId: process.env.CLIENT_ID,
-    clientSecret: process.env.CLIENT_SECRET,
-    redirectUri
-});
+// Configurar OAuth2 solo si el frontend está habilitado
+let oauth = null;
+if (WEB_ENABLED) {
+    const redirectUri = process.env.REDIRECT_URI || `http://localhost:${PORT}/callback`;
+    oauth = new DiscordOauth2({
+        clientId: process.env.CLIENT_ID,
+        clientSecret: process.env.CLIENT_SECRET,
+        redirectUri
+    });
+}
 
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'public')));
 
-app.use(session({
-    secret: process.env.SESSION_SECRET || 'cambia-esto-en-produccion',
-    resave: false,
-    saveUninitialized: false,
-    cookie: { secure: false, httpOnly: true, maxAge: 24*60*60*1000, sameSite: 'lax' },
-    name: 'tulabot.session'
-}));
+// Servir archivos estáticos solo si el frontend está habilitado
+if (WEB_ENABLED) {
+    app.use(express.static(path.join(__dirname, 'public')));
+    app.use(session({
+        secret: process.env.SESSION_SECRET || 'cambia-esto-en-produccion',
+        resave: false,
+        saveUninitialized: false,
+        cookie: { secure: false, httpOnly: true, maxAge: 24*60*60*1000, sameSite: 'lax' },
+        name: 'tulabot.session'
+    }));
+}
 
 let botClient = null;
 
-function setBotClient(client) { botClient = client; }
+function setBotClient(client) { 
+    botClient = client; 
+    console.log('✅ botClient inyectado en el servidor web');
+    console.log(`   Bot está listo: ${client.isReady()}`);
+    console.log(`   Servidores: ${client.guilds.cache.size}`);
+}
 
 // Almacenar logs recientes
 const recentLogs = [];
@@ -77,41 +95,64 @@ console.warn = function(...args) {
     addLog('warn', args.join(' '));
 };
 
-// Rutas de login y callback
-app.get('/login', (req, res) => {
-    const state = Math.random().toString(36).substring(7);
-    req.session.oauthState = state;
-    const url = oauth.generateAuthUrl({ scope: ['identify', 'guilds'], state });
-    res.redirect(url);
-});
+// Rutas de login y callback (solo si el frontend está habilitado)
+if (WEB_ENABLED) {
+    app.get('/login', (req, res) => {
+        if (!oauth) {
+            return res.status(503).send('Frontend no habilitado');
+        }
+        const state = Math.random().toString(36).substring(7);
+        req.session.oauthState = state;
+        const url = oauth.generateAuthUrl({ scope: ['identify', 'guilds'], state });
+        res.redirect(url);
+    });
 
-app.get('/callback', async (req, res) => {
-    try {
-        const { code, state } = req.query;
-        if (!code || state !== req.session.oauthState) return res.redirect('/login?error=auth_failed');
-        
-        const tokenData = await oauth.tokenRequest({ code, scope: 'identify guilds', grantType: 'authorization_code' });
-        const user = await oauth.getUser(tokenData.access_token);
-        const guilds = await oauth.getUserGuilds(tokenData.access_token);
-        
-        req.session.user = user;
-        req.session.guilds = guilds || [];
-        delete req.session.oauthState;
-        req.session.save(() => res.redirect('/'));
-    } catch {
-        res.redirect('/login?error=auth_failed');
-    }
-});
+    app.get('/callback', async (req, res) => {
+        if (!oauth) {
+            return res.status(503).send('Frontend no habilitado');
+        }
+        try {
+            const { code, state } = req.query;
+            if (!code || state !== req.session.oauthState) return res.redirect('/login?error=auth_failed');
+            
+            const tokenData = await oauth.tokenRequest({ code, scope: 'identify guilds', grantType: 'authorization_code' });
+            const user = await oauth.getUser(tokenData.access_token);
+            const guilds = await oauth.getUserGuilds(tokenData.access_token);
+            
+            req.session.user = user;
+            req.session.guilds = guilds || [];
+            delete req.session.oauthState;
+            req.session.save(() => res.redirect('/'));
+        } catch {
+            res.redirect('/login?error=auth_failed');
+        }
+    });
 
-app.get('/logout', (req, res) => { req.session.destroy(); res.redirect('/'); });
+    app.get('/logout', (req, res) => { req.session.destroy(); res.redirect('/'); });
+}
 
 // Middleware de autenticación
 function requireAuth(req, res, next) {
+    // Si el frontend no está habilitado, permitir acceso sin autenticación (solo API)
+    if (!WEB_ENABLED) {
+        return next();
+    }
+    
     if (!req.session || !req.session.user) {
         return res.redirect('/login');
     }
     next();
 }
+
+// Ruta de diagnóstico del bot
+app.get('/api/bot-status', requireAuth, (req, res) => {
+    res.json({
+        available: botClient !== null,
+        ready: botClient?.isReady() || false,
+        guilds: botClient?.guilds.cache.size || 0,
+        users: botClient?.users.cache.size || 0
+    });
+});
 
 // Rutas protegidas
 app.get('/api/user', requireAuth, (req, res) => {
@@ -494,22 +535,46 @@ app.get('/api/guild/:guildId/members', requireAuth, async (req, res) => {
     }
 });
 
-// Ruta principal
-app.get('/', (req, res) => {
-    if (!req.session.user) {
-        return res.redirect('/login');
-    }
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+// Ruta principal (solo si el frontend está habilitado)
+if (WEB_ENABLED) {
+    app.get('/', (req, res) => {
+        if (!req.session.user) {
+            return res.redirect('/login');
+        }
+        res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    });
+} else {
+    // Si solo es API, responder con información del servidor
+    app.get('/', (req, res) => {
+        res.json({
+            service: 'TulaBot API',
+            status: 'running',
+            botReady: botClient?.isReady() || false,
+            endpoints: {
+                stats: '/api/stats',
+                guilds: '/api/guilds',
+                commands: '/api/commands',
+                botStatus: '/api/bot-status'
+            }
+        });
+    });
+}
 
 // Iniciar servidor
-const server = app.listen(PORT, () => {
-    console.log(`🌐 Panel web iniciado en http://localhost:${PORT}`);
+// Escuchar en 0.0.0.0 para permitir acceso desde otros contenedores Docker
+const HOST = process.env.BOT_API_HOST || '0.0.0.0';
+const server = app.listen(PORT, HOST, () => {
+    if (WEB_ENABLED) {
+        console.log(`🌐 Panel web iniciado en http://${HOST}:${PORT}`);
+    } else {
+        console.log(`🌐 Servidor API iniciado en http://${HOST}:${PORT}`);
+        console.log(`   Modo: Solo API (frontend deshabilitado)`);
+    }
 }).on('error', (error) => {
     if (error.code === 'EADDRINUSE') {
         console.error(`❌ Error: El puerto ${PORT} ya está en uso`);
     } else {
-        console.error(`❌ Error iniciando panel web:`, error);
+        console.error(`❌ Error iniciando servidor:`, error);
     }
 });
 

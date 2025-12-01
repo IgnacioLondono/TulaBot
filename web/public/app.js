@@ -195,46 +195,52 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Guardar estado periódicamente y en eventos
     setInterval(saveState, 2000); // Guardar cada 2 segundos
     
-    // Actualizar datos automáticamente cada 5 segundos
+    // Verificar estado del bot cada 2 segundos
     setInterval(async () => {
-        const activeSection = document.querySelector('.section.active')?.id;
-        if (!activeSection) return;
-        
         try {
-            switch(activeSection) {
-                case 'dashboard':
-                    await loadGuilds();
-                    await loadStats(); // También actualizar stats en dashboard
-                    break;
-                case 'statsSection':
-                    await loadStats();
-                    break;
-                case 'embedSection':
-                    await loadGuildsForEmbed();
-                    // Si hay un servidor seleccionado, actualizar canales
-                    const guildSelect = document.getElementById('guildSelect')?.value;
-                    if (guildSelect) {
-                        await handleGuildSelect();
+            const response = await fetch('/api/bot-status');
+            if (response.ok) {
+                const status = await response.json();
+                if (status.ready) {
+                    // Bot está listo, actualizar datos según la sección activa
+                    const activeSection = document.querySelector('.section.active')?.id;
+                    if (!activeSection) return;
+                    
+                    switch(activeSection) {
+                        case 'dashboard':
+                            await loadGuilds();
+                            await loadStats();
+                            break;
+                        case 'statsSection':
+                            await loadStats();
+                            break;
+                        case 'embedSection':
+                            await loadGuildsForEmbed();
+                            const guildSelect = document.getElementById('guildSelect')?.value;
+                            if (guildSelect) {
+                                await handleGuildSelect();
+                            }
+                            break;
+                        case 'logsSection':
+                            // Los logs ya se actualizan automáticamente cada 2 segundos
+                            break;
+                        case 'commandsSection':
+                            await loadCommands();
+                            break;
+                        case 'serverSection':
+                            const selectedGuildId = document.getElementById('serverSelect')?.value;
+                            if (selectedGuildId) {
+                                await loadServerInfo(selectedGuildId);
+                                await loadServerMembers(selectedGuildId);
+                            }
+                            break;
                     }
-                    break;
-                case 'logsSection':
-                    // Los logs ya se actualizan automáticamente cada 2 segundos
-                    break;
-                case 'commandsSection':
-                    await loadCommands();
-                    break;
-                case 'serverSection':
-                    const selectedGuildId = document.getElementById('serverSelect')?.value;
-                    if (selectedGuildId) {
-                        await loadServerInfo(selectedGuildId);
-                        await loadServerMembers(selectedGuildId);
-                    }
-                    break;
+                }
             }
         } catch (error) {
-            console.error('Error actualizando datos:', error);
+            console.error('Error verificando estado del bot:', error);
         }
-    }, 5000); // Actualizar cada 5 segundos
+    }, 2000); // Verificar cada 2 segundos
 });
 
 // Verificar autenticación

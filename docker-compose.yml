@@ -48,6 +48,10 @@ services:
       - DB_PASSWORD=${MYSQL_PASSWORD:-tulabot_password}
       - DB_NAME=${MYSQL_DATABASE:-tulabot}
       - WEB_ENABLED=false
+      - BOT_API_PORT=3001
+      - BOT_API_HOST=0.0.0.0
+    ports:
+      - "${BOT_API_PORT:-3001}:3001"
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
