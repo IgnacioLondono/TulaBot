@@ -39,8 +39,8 @@ services:
       - DISCORD_TOKEN=${DISCORD_TOKEN}
       - CLIENT_ID=${CLIENT_ID}
       - DEFAULT_PREFIX=${DEFAULT_PREFIX:-!}
-      - TENOR_API_KEY=${TENOR_API_KEY}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - TENOR_API_KEY=${TENOR_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
       - DB_HOST=mysql
       - DB_PORT=3306
@@ -51,12 +51,18 @@ services:
       - BOT_API_PORT=3001
       - BOT_API_HOST=0.0.0.0
     ports:
-      - "3001:3001"
+      - "${BOT_API_PORT:-3001}:3001"
     volumes:
       - ./logs:/app/logs
       - ./data:/app/data
     networks:
       - tulabot-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # Panel Web
   web:
@@ -66,8 +72,10 @@ services:
     container_name: tulabot-web
     restart: unless-stopped
     depends_on:
-      - bot
-      - mysql
+      bot:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
     environment:
       - NODE_ENV=production
       - CLIENT_ID=${CLIENT_ID}
@@ -82,6 +90,12 @@ services:
       - ./logs:/app/logs
     networks:
       - tulabot-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
 networks:
   tulabot-network:

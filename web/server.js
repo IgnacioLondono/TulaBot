@@ -405,7 +405,28 @@ if (process.env.BOT_API_PORT) {
         }
     });
     
+    // Ruta de health check para el bot API (solo cuando está en modo API)
+    app.get('/health', (req, res) => {
+        try {
+            if (!botClient || !botClient.isReady || !botClient.isReady()) {
+                return res.status(503).json({ status: 'unhealthy', service: 'bot-api', message: 'Bot no disponible' });
+            }
+            res.status(200).json({ status: 'healthy', service: 'bot-api', timestamp: new Date().toISOString() });
+        } catch (error) {
+            res.status(503).json({ status: 'unhealthy', service: 'bot-api', error: error.message });
+        }
+    });
+    
     console.log('✅ Rutas API internas del bot habilitadas (sin autenticación)');
+} else {
+    // Health check para el panel web (solo cuando NO está en modo API)
+    app.get('/health', (req, res) => {
+        res.status(200).json({ 
+            status: 'healthy', 
+            service: 'web-panel', 
+            timestamp: new Date().toISOString() 
+        });
+    });
 }
 
 // Rutas protegidas

@@ -22,7 +22,6 @@ RUN npm install --omit=dev --legacy-peer-deps
 
 # Copiar código fuente
 COPY src/ ./src/
-COPY verificar-*.js ./
 
 # Copiar servidor API del bot (web/server.js como web_api.js)
 COPY web/server.js ./web_api.js
