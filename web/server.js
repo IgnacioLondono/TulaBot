@@ -36,6 +36,7 @@ console.log('🔐 OAuth2 configurado:');
 console.log(`   Client ID: ${process.env.CLIENT_ID ? '✅ Configurado' : '❌ Faltante'}`);
 console.log(`   Client Secret: ${process.env.CLIENT_SECRET ? '✅ Configurado' : '❌ Faltante'}`);
 console.log(`   Redirect URI: ${redirectUri}`);
+console.log(`   BOT_URL: ${BOT_URL || 'No configurado (modo desarrollo local)'}`);
 
 // Middleware
 app.use(cors({
@@ -92,9 +93,26 @@ if (process.env.NODE_ENV !== 'production') {
 // Variable global para el cliente del bot (se inyectará desde index.js)
 let botClient = null;
 
+// URL del bot API (para Docker)
+const BOT_URL = process.env.BOT_URL || null;
+
 // Función para inyectar el cliente del bot
 function setBotClient(client) {
     botClient = client;
+    console.log('✅ Bot client inyectado en web server');
+}
+
+// Función helper para verificar si el bot está disponible
+function isBotAvailable() {
+    if (BOT_URL) {
+        // En Docker: el bot debería estar disponible en BOT_URL
+        // Pero no podemos verificar sin hacer una petición HTTP
+        return true; // Asumimos que está disponible
+    } else if (botClient && botClient.isReady && botClient.isReady()) {
+        // Desarrollo local: verificar botClient
+        return true;
+    }
+    return false;
 }
 
 // Rutas de autenticación
@@ -292,9 +310,28 @@ app.get('/api/guilds', requireAuth, async (req, res) => {
     try {
         const guilds = req.session.guilds || [];
         
-        // Filtrar solo servidores donde el bot está presente
-        const botGuilds = [];
-        if (botClient) {
+        if (BOT_URL) {
+            // En Docker: hacer petición HTTP al bot para obtener servidores donde está presente
+            try {
+                const response = await axios.get(`${BOT_URL}/api/guilds`, { 
+                    timeout: 5000,
+                    headers: {
+                        'X-User-Guilds': JSON.stringify(guilds.map(g => g.id))
+                    }
+                });
+                // Filtrar solo los servidores donde el usuario tiene acceso
+                const botGuilds = response.data.filter(botGuild => 
+                    guilds.some(userGuild => userGuild.id === botGuild.id)
+                );
+                return res.json(botGuilds);
+            } catch (error) {
+                console.error('❌ Error obteniendo servidores del bot:', error.message);
+                // Si el bot no está disponible, retornar lista vacía
+                return res.json([]);
+            }
+        } else if (botClient && botClient.isReady && botClient.isReady()) {
+            // Desarrollo local: usar botClient directamente
+            const botGuilds = [];
             for (const guild of guilds) {
                 const botGuild = botClient.guilds.cache.get(guild.id);
                 if (botGuild) {
@@ -314,9 +351,11 @@ app.get('/api/guilds', requireAuth, async (req, res) => {
                     });
                 }
             }
+            return res.json(botGuilds);
+        } else {
+            // Bot no disponible
+            return res.json([]);
         }
-        
-        res.json(botGuilds);
     } catch (error) {
         console.error('Error obteniendo servidores:', error);
         res.status(500).json({ error: 'Error al obtener servidores' });
@@ -425,24 +464,38 @@ app.post('/api/send-embed', requireAuth, async (req, res) => {
 });
 
 // Ruta para obtener estadísticas del bot
-app.get('/api/stats', requireAuth, (req, res) => {
-    if (!botClient) {
-        return res.status(500).json({ error: 'Bot no disponible' });
+app.get('/api/stats', requireAuth, async (req, res) => {
+    try {
+        if (BOT_URL) {
+            // En Docker: hacer petición HTTP al bot
+            try {
+                const response = await axios.get(`${BOT_URL}/api/stats`, { timeout: 5000 });
+                return res.json(response.data);
+            } catch (error) {
+                console.error('❌ Error obteniendo stats del bot:', error.message);
+                return res.status(503).json({ error: 'Bot no disponible', details: error.message });
+            }
+        } else if (botClient && botClient.isReady && botClient.isReady()) {
+            // Desarrollo local: usar botClient directamente
+            const stats = {
+                guilds: botClient.guilds.cache.size,
+                users: botClient.users.cache.size,
+                channels: botClient.channels.cache.size,
+                uptime: botClient.uptime,
+                ping: botClient.ws.ping,
+                commands: botClient.commands?.size || 0,
+                memory: process.memoryUsage(),
+                nodeVersion: process.version,
+                platform: process.platform
+            };
+            return res.json(stats);
+        } else {
+            return res.status(503).json({ error: 'Bot no disponible' });
+        }
+    } catch (error) {
+        console.error('Error obteniendo estadísticas:', error);
+        res.status(500).json({ error: 'Error al obtener estadísticas' });
     }
-
-    const stats = {
-        guilds: botClient.guilds.cache.size,
-        users: botClient.users.cache.size,
-        channels: botClient.channels.cache.size,
-        uptime: botClient.uptime,
-        ping: botClient.ws.ping,
-        commands: botClient.commands?.size || 0,
-        memory: process.memoryUsage(),
-        nodeVersion: process.version,
-        platform: process.platform
-    };
-
-    res.json(stats);
 });
 
 // Almacenar logs recientes
