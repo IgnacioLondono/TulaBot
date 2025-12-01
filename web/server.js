@@ -26,6 +26,9 @@ if (!process.env.CLIENT_SECRET) {
 // Configuración de OAuth2
 const redirectUri = process.env.REDIRECT_URI || `http://localhost:${PORT}/callback`;
 
+// URL del bot API (para Docker) - Declarar antes de usar
+const BOT_URL = process.env.BOT_URL || null;
+
 const oauth = new DiscordOauth2({
     clientId: process.env.CLIENT_ID,
     clientSecret: process.env.CLIENT_SECRET,
@@ -92,9 +95,6 @@ if (process.env.NODE_ENV !== 'production') {
 
 // Variable global para el cliente del bot (se inyectará desde index.js)
 let botClient = null;
-
-// URL del bot API (para Docker)
-const BOT_URL = process.env.BOT_URL || null;
 
 // Función para inyectar el cliente del bot
 function setBotClient(client) {
