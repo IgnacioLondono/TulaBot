@@ -251,22 +251,32 @@ process.on('unhandledRejection', error => {
     console.error('Error no manejado:', error);
 });
 
-// Iniciar servidor web (solo si está habilitado)
-// El módulo solo se carga si WEB_ENABLED es 'true' para evitar errores
-if (process.env.WEB_ENABLED === 'true') {
-    try {
-        // Cargar el módulo solo cuando WEB_ENABLED es true
-        const { setBotClient } = require('../web/server');
-        // El servidor se inicia automáticamente al requerir el módulo
-        // La inyección del cliente se hará en el evento 'ready' cuando el bot esté completamente inicializado
-        client.once('ready', () => {
-            setBotClient(client);
-        });
-    } catch (error) {
-        console.error('⚠️ Error iniciando panel web:', error.message);
-        console.log('💡 El bot continuará funcionando sin el panel web.');
-        console.log('💡 Para habilitarlo, verifica la configuración en .env');
-    }
+// Iniciar servidor API del bot
+// El servidor API debe iniciarse cuando BOT_API_PORT está definido (modo Docker)
+try {
+    const { setBotClient, startServer } = require('../web/server');
+    
+    // Inyectar cliente e iniciar servidor cuando el bot esté listo
+    client.once('ready', () => {
+        // Inyectar el cliente de Discord en el módulo de la API
+        setBotClient(client);
+        
+        // Si BOT_API_PORT está definido, iniciar el servidor Express API
+        if (process.env.BOT_API_PORT) {
+            const apiPort = parseInt(process.env.BOT_API_PORT) || 3001;
+            const apiHost = process.env.BOT_API_HOST || '0.0.0.0';
+            
+            console.log(`🚀 Iniciando servidor API del bot en ${apiHost}:${apiPort}...`);
+            startServer(apiPort, apiHost);
+        } else {
+            console.log('ℹ️ BOT_API_PORT no está definido. El servidor API no se iniciará.');
+            console.log('💡 En Docker, configura BOT_API_PORT=3001 y BOT_API_HOST=0.0.0.0');
+        }
+    });
+} catch (error) {
+    console.error('⚠️ Error cargando módulo del servidor API:', error.message);
+    console.log('💡 El bot continuará funcionando, pero el panel web no estará disponible.');
+    console.log('💡 Verifica que el módulo web/server.js exista y esté correctamente configurado.');
 }
 
 client.login(process.env.DISCORD_TOKEN);

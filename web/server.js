@@ -9,7 +9,12 @@ const axios = require('axios');
 const cors = require('cors');
 
 const app = express();
-const PORT = process.env.WEB_PORT || 3000;
+
+// Determinar puerto y host según el modo de ejecución
+// Si BOT_API_PORT está definido, estamos en modo API del bot (Docker)
+// Si no, estamos en modo panel web completo
+const PORT = process.env.BOT_API_PORT || process.env.WEB_PORT || 3000;
+const HOST = process.env.BOT_API_PORT ? (process.env.BOT_API_HOST || '0.0.0.0') : 'localhost';
 
 // URL del bot API (para Docker) - Se conecta al contenedor bot en puerto 3001
 const BOT_URL = process.env.BOT_URL || null;
@@ -935,20 +940,53 @@ app.get('/dashboard', (req, res) => {
 });
 
 // Iniciar servidor con manejo de errores
-const server = app.listen(PORT, () => {
-    console.log(`🌐 Panel web iniciado en http://localhost:${PORT}`);
-}).on('error', (error) => {
-    if (error.code === 'EADDRINUSE') {
-        console.error(`❌ Error: El puerto ${PORT} ya está en uso`);
-        console.log(`💡 Soluciones:`);
-        console.log(`   1. Cambia el puerto en .env: WEB_PORT=3001`);
-        console.log(`   2. O detén el proceso que usa el puerto ${PORT}`);
-        console.log(`   3. O deshabilita el panel: WEB_ENABLED=false`);
-        console.log(`\n⚠️  El bot continuará funcionando sin el panel web.`);
-    } else {
-        console.error(`❌ Error iniciando panel web:`, error);
-    }
-});
+// Solo iniciar automáticamente si no estamos en modo API del bot
+// (En modo API, el servidor se iniciará manualmente desde src/index.js)
+let server = null;
 
-module.exports = { setBotClient, app, server };
+if (!process.env.BOT_API_PORT) {
+    // Modo panel web completo - iniciar automáticamente
+    server = app.listen(PORT, HOST, () => {
+        console.log(`🌐 Panel web iniciado en http://${HOST}:${PORT}`);
+    }).on('error', (error) => {
+        if (error.code === 'EADDRINUSE') {
+            console.error(`❌ Error: El puerto ${PORT} ya está en uso`);
+            console.log(`💡 Soluciones:`);
+            console.log(`   1. Cambia el puerto en .env: WEB_PORT=3001`);
+            console.log(`   2. O detén el proceso que usa el puerto ${PORT}`);
+            console.log(`   3. O deshabilita el panel: WEB_ENABLED=false`);
+            console.log(`\n⚠️  El bot continuará funcionando sin el panel web.`);
+        } else {
+            console.error(`❌ Error iniciando panel web:`, error);
+        }
+    });
+} else {
+    // Modo API del bot - el servidor se iniciará manualmente desde src/index.js
+    console.log(`🔧 Modo API del bot detectado (puerto ${PORT}, host ${HOST})`);
+    console.log(`   El servidor se iniciará cuando el bot esté listo.`);
+}
+
+// Función para iniciar el servidor manualmente (modo API del bot)
+function startServer(port = PORT, host = HOST) {
+    if (server && server.listening) {
+        console.log(`⚠️ El servidor ya está iniciado en ${host}:${port}`);
+        return server;
+    }
+    
+    server = app.listen(port, host, () => {
+        console.log(`🚀 API del bot iniciada en http://${host}:${port}`);
+        console.log(`   Listo para recibir peticiones del panel web.`);
+    }).on('error', (error) => {
+        if (error.code === 'EADDRINUSE') {
+            console.error(`❌ Error: El puerto ${port} ya está en uso`);
+            console.log(`💡 Verifica que no haya otro proceso usando el puerto ${port}`);
+        } else {
+            console.error(`❌ Error iniciando API del bot:`, error);
+        }
+    });
+    
+    return server;
+}
+
+module.exports = { setBotClient, app, server, startServer };
 
