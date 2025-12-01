@@ -18,7 +18,7 @@ COPY package*.json ./
 
 # Instalar dependencias
 # Usar npm install porque package-lock.json puede no existir
-RUN npm install --omit=dev --legacy-peer-deps
+RUN npm install --legacy-peer-deps
 
 # Copiar código fuente
 COPY src/ ./src/
