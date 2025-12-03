@@ -253,8 +253,7 @@ process.on('unhandledRejection', error => {
 // Iniciar servidor API del bot
 // El servidor API debe iniciarse cuando BOT_API_PORT está definido (modo Docker)
 // En Docker, el archivo web/server.js se copia como web_api.js en la raíz del proyecto
-const fs = require('fs');
-const path = require('path');
+// (fs y path ya están importados al inicio del archivo)
 
 // Solo intentar cargar el módulo del servidor API si BOT_API_PORT está definido
 if (process.env.BOT_API_PORT) {
