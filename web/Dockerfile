@@ -1,5 +1,5 @@
 # Dockerfile para Panel Web de TulaBot
-FROM node:18-alpine
+FROM node:20-alpine
 
 # Crear directorio de trabajo
 WORKDIR /app
