@@ -203,11 +203,10 @@ database.init().then(() => {
     console.log('✅ Base de datos MySQL inicializada');
 }).catch(error => {
     console.error('❌ Error inicializando base de datos:', error.message);
-    // En desarrollo, puede continuar sin MySQL si no está configurado
-    if (process.env.NODE_ENV === 'production') {
-        console.error('⚠️ El bot requiere MySQL en producción. Deteniendo...');
-        process.exit(1);
-    }
+    console.warn('⚠️ El bot continuará funcionando, pero algunas funciones pueden no estar disponibles.');
+    console.warn('💡 Verifica las variables de entorno: DB_HOST, DB_USER, DB_PASSWORD, DB_NAME');
+    // No detener el bot, permitir que continúe funcionando
+    // Las funciones que requieren DB fallarán de forma controlada
 });
 
 // Cargar comandos
@@ -254,40 +253,75 @@ process.on('unhandledRejection', error => {
 // Iniciar servidor API del bot
 // El servidor API debe iniciarse cuando BOT_API_PORT está definido (modo Docker)
 // En Docker, el archivo web/server.js se copia como web_api.js en la raíz del proyecto
-try {
-    // Intentar cargar desde web_api.js (Docker) o web/server.js (desarrollo)
-    let apiModule;
+const fs = require('fs');
+const path = require('path');
+
+// Solo intentar cargar el módulo del servidor API si BOT_API_PORT está definido
+if (process.env.BOT_API_PORT) {
     try {
-        apiModule = require('../web_api');
-    } catch (e) {
-        // Fallback a la ruta de desarrollo
-        apiModule = require('../web/server');
-    }
-    
-    const { setBotClient, startServer } = apiModule;
-    
-    // Inyectar cliente e iniciar servidor cuando el bot esté listo
-    client.once('ready', () => {
-        // Inyectar el cliente de Discord en el módulo de la API
-        setBotClient(client);
+        let apiModule = null;
+        const webApiPath = path.join(__dirname, '..', 'web_api.js');
+        const webServerPath = path.join(__dirname, '..', 'web', 'server.js');
         
-        // Si BOT_API_PORT está definido, iniciar el servidor Express API
-        if (process.env.BOT_API_PORT) {
-            const apiPort = parseInt(process.env.BOT_API_PORT) || 3001;
-            const apiHost = process.env.BOT_API_HOST || '0.0.0.0';
-            
-            console.log(`🚀 Iniciando servidor API del bot en ${apiHost}:${apiPort}...`);
-            startServer(apiPort, apiHost);
-        } else {
-            console.log('ℹ️ BOT_API_PORT no está definido. El servidor API no se iniciará.');
-            console.log('💡 En Docker, configura BOT_API_PORT=3001 y BOT_API_HOST=0.0.0.0');
+        // Intentar cargar desde web_api.js (Docker) primero
+        if (fs.existsSync(webApiPath)) {
+            try {
+                apiModule = require(webApiPath);
+            } catch (e) {
+                console.warn('⚠️ No se pudo cargar web_api.js:', e.message);
+            }
         }
-    });
-} catch (error) {
-    console.error('⚠️ Error cargando módulo del servidor API:', error.message);
-    console.log('💡 El bot continuará funcionando, pero el panel web no estará disponible.');
-    console.log('💡 Verifica que el módulo web_api.js o web/server.js exista y esté correctamente configurado.');
+        
+        // Si no se cargó, intentar desde web/server.js (desarrollo)
+        if (!apiModule && fs.existsSync(webServerPath)) {
+            try {
+                apiModule = require(webServerPath);
+            } catch (e) {
+                console.warn('⚠️ No se pudo cargar web/server.js:', e.message);
+            }
+        }
+        
+        if (apiModule && apiModule.setBotClient && apiModule.startServer) {
+            const { setBotClient, startServer } = apiModule;
+            
+            // Inyectar cliente e iniciar servidor cuando el bot esté listo
+            client.once('ready', () => {
+                // Inyectar el cliente de Discord en el módulo de la API
+                setBotClient(client);
+                
+                const apiPort = parseInt(process.env.BOT_API_PORT) || 3001;
+                const apiHost = process.env.BOT_API_HOST || '0.0.0.0';
+                
+                console.log(`🚀 Iniciando servidor API del bot en ${apiHost}:${apiPort}...`);
+                startServer(apiPort, apiHost);
+            });
+        } else {
+            console.log('ℹ️ Módulo del servidor API no disponible. El panel web no estará disponible.');
+            console.log('💡 En Docker, el panel web se ejecuta como un servicio separado.');
+        }
+    } catch (error) {
+        console.warn('⚠️ Error cargando módulo del servidor API:', error.message);
+        console.log('💡 El bot continuará funcionando, pero el panel web no estará disponible.');
+        console.log('💡 En Docker, el panel web se ejecuta como un servicio separado.');
+    }
+} else {
+    console.log('ℹ️ BOT_API_PORT no está definido. El servidor API no se iniciará.');
+    console.log('💡 En Docker, el panel web se ejecuta como un servicio separado.');
 }
 
-client.login(process.env.DISCORD_TOKEN);
+// Validar token antes de iniciar sesión
+if (!process.env.DISCORD_TOKEN) {
+    console.error('❌ DISCORD_TOKEN no está definido en las variables de entorno');
+    console.error('💡 Configura DISCORD_TOKEN en tu archivo .env o variables de entorno');
+    process.exit(1);
+}
+
+// Iniciar sesión con Discord
+client.login(process.env.DISCORD_TOKEN).catch(error => {
+    console.error('❌ Error al iniciar sesión con Discord:', error.message);
+    if (error.code === 'TokenInvalid') {
+        console.error('💡 El token de Discord es inválido. Verifica DISCORD_TOKEN en tus variables de entorno.');
+    }
+    process.exit(1);
+});
 

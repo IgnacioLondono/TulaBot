@@ -72,12 +72,10 @@ const database = {
             return true;
         } catch (error) {
             console.error('❌ Error conectando a MySQL:', error.message);
-            // Fallback a JSON si MySQL no está disponible (solo en desarrollo)
-            if (process.env.NODE_ENV !== 'production' && !process.env.DB_HOST) {
-                console.warn('⚠️ Usando modo fallback JSON (solo desarrollo)');
-                return false;
-            }
-            throw error;
+            console.warn('💡 Verifica las variables de entorno: DB_HOST, DB_USER, DB_PASSWORD, DB_NAME');
+            // No lanzar error, permitir que el bot continúe funcionando
+            // Las funciones que requieren DB fallarán de forma controlada
+            return false;
         }
     },
 
@@ -186,9 +184,7 @@ const database = {
     }
 };
 
-// Inicializar automáticamente al cargar el módulo
-database.init().catch(err => {
-    console.error('❌ Error inicializando base de datos:', err.message);
-});
+// No inicializar automáticamente - se inicializa desde index.js
+// Esto evita inicializaciones duplicadas y mejor control de errores
 
 module.exports = database;
