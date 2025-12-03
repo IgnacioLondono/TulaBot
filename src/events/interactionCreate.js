@@ -266,22 +266,43 @@ module.exports = {
 
             if (now < expirationTime) {
                 const expiredTimestamp = Math.round(expirationTime / 1000);
-                return interaction.reply({
-                    embeds: [Embeds.error('Cooldown', `Espera <t:${expiredTimestamp}:R> antes de usar \`${command.data.name}\` nuevamente.`)],
-                    flags: 64
-                });
+                try {
+                    return await interaction.reply({
+                        embeds: [Embeds.error('Cooldown', `Espera <t:${expiredTimestamp}:R> antes de usar \`${command.data.name}\` nuevamente.`)],
+                        flags: 64
+                    });
+                } catch (e) {
+                    if (e.code !== 10062) logger.error('Error respondiendo cooldown:', e);
+                    return;
+                }
             }
         }
 
         timestamps.set(interaction.user.id, now);
         setTimeout(() => timestamps.delete(interaction.user.id), defaultCooldownDuration);
 
-        // Ejecutar comando
+        // Ejecutar comando con timeout y manejo de respuesta
+        let responded = false;
+        const timeout = setTimeout(async () => {
+            if (!responded && !interaction.replied && !interaction.deferred) {
+                try {
+                    responded = true;
+                    await interaction.deferReply({ flags: 64 });
+                    logger.warn(`Comando ${command.data.name} tardó más de 2.5s, usando deferReply`);
+                } catch (e) {
+                    if (e.code !== 10062) logger.error('Error en timeout deferReply:', e);
+                }
+            }
+        }, 2500); // Defer después de 2.5 segundos para evitar timeout de Discord
+
         try {
             await command.execute(interaction);
+            clearTimeout(timeout);
+            responded = true;
             logger.info(`${interaction.user.tag} usó el comando ${command.data.name}`);
         } catch (error) {
-            logger.error(`Error ejecutando ${command.data.name}: ${error}`);
+            clearTimeout(timeout);
+            logger.error(`Error ejecutando ${command.data.name}:`, error);
             
             // Verificar si la interacción aún es válida
             if (error.code === 10062 || error.message?.includes('Unknown interaction')) {
