@@ -9,19 +9,7 @@ const axios = require('axios');
 const cors = require('cors');
 
 const app = express();
-
-// Determinar puerto y host según el modo de ejecución
-// Si BOT_API_PORT está definido, estamos en modo API del bot (Docker)
-// Si no, estamos en modo panel web completo
-const PORT = process.env.BOT_API_PORT || process.env.WEB_PORT || 3000;
-// En Docker, siempre usar 0.0.0.0 para que sea accesible desde fuera del contenedor
-// En desarrollo local, usar localhost
-const HOST = process.env.BOT_API_PORT 
-    ? (process.env.BOT_API_HOST || '0.0.0.0') 
-    : (process.env.NODE_ENV === 'production' ? '0.0.0.0' : 'localhost');
-
-// URL del bot API (para Docker) - Se conecta al contenedor bot en puerto 3001
-const BOT_URL = process.env.BOT_URL || null;
+const PORT = process.env.WEB_PORT || 3000;
 
 // Validar variables de entorno requeridas
 if (!process.env.CLIENT_ID) {
@@ -48,13 +36,9 @@ console.log('🔐 OAuth2 configurado:');
 console.log(`   Client ID: ${process.env.CLIENT_ID ? '✅ Configurado' : '❌ Faltante'}`);
 console.log(`   Client Secret: ${process.env.CLIENT_SECRET ? '✅ Configurado' : '❌ Faltante'}`);
 console.log(`   Redirect URI: ${redirectUri}`);
-console.log(`   BOT_URL: ${BOT_URL || 'No configurado (modo desarrollo local)'}`);
 
 // Middleware
-app.use(cors({
-    origin: true, // Permitir cualquier origen (o especificar el dominio)
-    credentials: true // Permitir cookies
-}));
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -62,45 +46,16 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Configuración de sesiones
 app.use(session({
     secret: process.env.SESSION_SECRET || 'tu-secret-super-seguro-cambiar-en-produccion',
-    resave: true, // Guardar sesión incluso si no se modificó
+    resave: false,
     saveUninitialized: false,
-    rolling: true, // Renovar la cookie en cada request
     cookie: {
-        secure: false, // Siempre false para desarrollo (http) y para que funcione con IPs
+        secure: process.env.NODE_ENV === 'production', // false en desarrollo (http)
         httpOnly: true,
         maxAge: 24 * 60 * 60 * 1000, // 24 horas
-        sameSite: 'lax', // 'lax' permite cookies en navegación de nivel superior (necesario para OAuth redirects)
-        path: '/', // Asegurar que la cookie esté disponible en toda la aplicación
-        domain: undefined // No establecer dominio para que funcione en cualquier subdominio/IP
+        sameSite: 'lax' // Ayuda con redirecciones de OAuth
     },
     name: 'tulabot.session' // Nombre personalizado para la cookie
 }));
-
-// Middleware de debugging para sesiones (solo en desarrollo)
-if (process.env.NODE_ENV !== 'production') {
-    app.use((req, res, next) => {
-        // Log para todas las rutas importantes
-        if (req.path.startsWith('/api/') || req.path === '/' || req.path === '/callback') {
-            const cookies = req.headers.cookie || 'Ninguna';
-            const sessionCookie = cookies.includes('tulabot.session') 
-                ? cookies.split('tulabot.session=')[1]?.split(';')[0] 
-                : 'No encontrada';
-            
-            console.log(`📋 Request a ${req.path}:`);
-            console.log(`   Cookie recibida: ${cookies.substring(0, 100)}${cookies.length > 100 ? '...' : ''}`);
-            console.log(`   Session Cookie: ${sessionCookie}`);
-            console.log(`   Session ID: ${req.sessionID}`);
-            console.log(`   Usuario en sesión: ${req.session?.user ? req.session.user.username : 'No'}`);
-            console.log(`   Autenticado: ${req.session?.authenticated || false}`);
-            
-            // Si hay una cookie de sesión pero no coincide con el sessionID, hay un problema
-            if (sessionCookie !== 'No encontrada' && sessionCookie !== req.sessionID) {
-                console.log(`   ⚠️ ADVERTENCIA: Cookie de sesión (${sessionCookie}) no coincide con Session ID (${req.sessionID})`);
-            }
-        }
-        next();
-    });
-}
 
 // Variable global para el cliente del bot (se inyectará desde index.js)
 let botClient = null;
@@ -108,20 +63,6 @@ let botClient = null;
 // Función para inyectar el cliente del bot
 function setBotClient(client) {
     botClient = client;
-    console.log('✅ Bot client inyectado en web server');
-}
-
-// Función helper para verificar si el bot está disponible
-function isBotAvailable() {
-    if (BOT_URL) {
-        // En Docker: el bot debería estar disponible en BOT_URL
-        // Pero no podemos verificar sin hacer una petición HTTP
-        return true; // Asumimos que está disponible
-    } else if (botClient && botClient.isReady && botClient.isReady()) {
-        // Desarrollo local: verificar botClient
-        return true;
-    }
-    return false;
 }
 
 // Rutas de autenticación
@@ -219,52 +160,23 @@ app.get('/callback', async (req, res) => {
             return res.redirect('/login?error=auth_failed');
         }
 
-        // Limpiar estado OAuth
-        delete req.session.oauthState;
-
-        // Guardar datos en sesión
+        // Guardar en sesión
         req.session.user = user;
         req.session.guilds = guilds || [];
         req.session.accessToken = tokenData.access_token;
-        req.session.authenticated = true;
-        req.session.loginTime = new Date().toISOString();
+        delete req.session.oauthState; // Limpiar estado OAuth
 
-        // Guardar sesión y esperar a que se complete antes de redirigir
-        // express-session establecerá automáticamente la cookie cuando se guarde la sesión
-        await new Promise((resolve, reject) => {
-            req.session.save((err) => {
-                if (err) {
-                    console.error('❌ Error guardando sesión:', err);
-                    reject(err);
-                } else {
-                    console.log(`✅ Usuario autenticado: ${user.username}#${user.discriminator} (${user.id})`);
-                    console.log(`   Servidores: ${guilds?.length || 0}`);
-                    console.log(`   Sesión ID: ${req.sessionID}`);
-                    console.log(`   Sesión guardada correctamente`);
-                    
-                    // Verificar que la cookie se estableció
-                    const setCookieHeader = res.getHeader('Set-Cookie');
-                    if (setCookieHeader) {
-                        const cookies = Array.isArray(setCookieHeader) ? setCookieHeader : [setCookieHeader];
-                        const sessionCookie = cookies.find(c => c.startsWith('tulabot.session='));
-                        if (sessionCookie) {
-                            console.log(`   ✅ Cookie establecida: ${sessionCookie.substring(0, 80)}...`);
-                        } else {
-                            console.log(`   ⚠️ Cookie de sesión no encontrada en Set-Cookie header`);
-                        }
-                    } else {
-                        console.log(`   ⚠️ Set-Cookie header no encontrado`);
-                    }
-                    
-                    resolve();
-                }
-            });
+        // Guardar sesión antes de redirigir
+        req.session.save((err) => {
+            if (err) {
+                console.error('❌ Error guardando sesión:', err);
+                return res.redirect('/login?error=session_error');
+            }
+            console.log(`✅ Usuario autenticado: ${user.username}#${user.discriminator} (${user.id})`);
+            console.log(`   Servidores: ${guilds?.length || 0}`);
+            // Redirigir a la raíz en lugar de /dashboard
+            res.redirect('/');
         });
-        
-        // Redirigir después de asegurar que la sesión se guardó
-        // La cookie debería estar establecida automáticamente por express-session
-        console.log(`   Redirigiendo a /...`);
-        res.redirect('/');
     } catch (error) {
         console.error('❌ Error en callback:', error);
         console.error('   Mensaje:', error.message);
@@ -290,143 +202,11 @@ app.get('/logout', (req, res) => {
 
 // Middleware para verificar autenticación
 function requireAuth(req, res, next) {
-    // Verificar que la sesión existe y tiene un usuario autenticado
-    if (!req.session || !req.session.user || !req.session.authenticated) {
+    if (!req.session || !req.session.user) {
         console.log('⚠️ Intento de acceso sin autenticación a:', req.path);
-        console.log('   Sesión ID:', req.sessionID);
-        console.log('   Usuario en sesión:', req.session?.user ? 'Presente' : 'Ausente');
-        console.log('   Autenticado:', req.session?.authenticated || false);
-        
-        // Si es una ruta API, devolver error JSON en lugar de redirigir
-        if (req.path.startsWith('/api/')) {
-            return res.status(401).json({ error: 'No autenticado', redirect: '/login' });
-        }
-        // Para rutas normales, redirigir a login
         return res.redirect('/login');
     }
     next();
-}
-
-// ============================================
-// RUTAS API INTERNAS DEL BOT (sin autenticación)
-// Estas rutas solo están disponibles cuando BOT_API_PORT está definido
-// ============================================
-if (process.env.BOT_API_PORT) {
-    // Ruta para obtener servidores del bot (sin autenticación)
-    app.get('/api/internal/guilds', async (req, res) => {
-        try {
-            if (!botClient || !botClient.isReady || !botClient.isReady()) {
-                return res.status(503).json({ error: 'Bot no disponible' });
-            }
-            
-            const botGuilds = botClient.guilds.cache.map(guild => ({
-                id: guild.id,
-                name: guild.name,
-                icon: guild.iconURL({ dynamic: true, size: 256 }),
-                memberCount: guild.memberCount,
-                channels: guild.channels.cache.filter(c => c.type === 0 || c.type === 2).map(c => ({
-                    id: c.id,
-                    name: c.name,
-                    type: c.type
-                }))
-            }));
-            
-            res.json(botGuilds);
-        } catch (error) {
-            console.error('Error obteniendo servidores del bot (API interna):', error);
-            res.status(500).json({ error: 'Error al obtener servidores' });
-        }
-    });
-    
-    // Ruta para obtener estadísticas del bot (sin autenticación)
-    app.get('/api/internal/stats', async (req, res) => {
-        try {
-            if (!botClient || !botClient.isReady || !botClient.isReady()) {
-                return res.status(503).json({ error: 'Bot no disponible' });
-            }
-            
-            const stats = {
-                guilds: botClient.guilds.cache.size,
-                users: botClient.users.cache.size,
-                channels: botClient.channels.cache.size,
-                uptime: botClient.uptime,
-                ping: botClient.ws.ping,
-                commands: botClient.commands?.size || 0,
-                memory: process.memoryUsage(),
-                nodeVersion: process.version,
-                platform: process.platform
-            };
-            
-            res.json(stats);
-        } catch (error) {
-            console.error('Error obteniendo estadísticas del bot (API interna):', error);
-            res.status(500).json({ error: 'Error al obtener estadísticas' });
-        }
-    });
-    
-    // Ruta para obtener canales de un servidor (sin autenticación)
-    app.get('/api/internal/guild/:guildId/channels', async (req, res) => {
-        try {
-            const { guildId } = req.params;
-            
-            if (!botClient || !botClient.isReady || !botClient.isReady()) {
-                return res.status(503).json({ error: 'Bot no disponible' });
-            }
-            
-            const guild = botClient.guilds.cache.get(guildId);
-            if (!guild) {
-                return res.status(404).json({ error: 'Servidor no encontrado' });
-            }
-            
-            const channels = guild.channels.cache
-                .filter(c => c.type === 0 || c.type === 2) // Solo texto y voz
-                .map(c => ({
-                    id: c.id,
-                    name: c.name,
-                    type: c.type,
-                    parent: c.parent ? {
-                        id: c.parent.id,
-                        name: c.parent.name
-                    } : null
-                }))
-                .sort((a, b) => {
-                    if (a.parent && b.parent) {
-                        if (a.parent.id !== b.parent.id) {
-                            return a.parent.name.localeCompare(b.parent.name);
-                        }
-                    }
-                    return a.name.localeCompare(b.name);
-                });
-            
-            res.json(channels);
-        } catch (error) {
-            console.error('Error obteniendo canales (API interna):', error);
-            res.status(500).json({ error: 'Error al obtener canales' });
-        }
-    });
-    
-    // Ruta de health check para el bot API (solo cuando está en modo API)
-    app.get('/health', (req, res) => {
-        try {
-            if (!botClient || !botClient.isReady || !botClient.isReady()) {
-                return res.status(503).json({ status: 'unhealthy', service: 'bot-api', message: 'Bot no disponible' });
-            }
-            res.status(200).json({ status: 'healthy', service: 'bot-api', timestamp: new Date().toISOString() });
-        } catch (error) {
-            res.status(503).json({ status: 'unhealthy', service: 'bot-api', error: error.message });
-        }
-    });
-    
-    console.log('✅ Rutas API internas del bot habilitadas (sin autenticación)');
-} else {
-    // Health check para el panel web (solo cuando NO está en modo API)
-    app.get('/health', (req, res) => {
-        res.status(200).json({ 
-            status: 'healthy', 
-            service: 'web-panel', 
-            timestamp: new Date().toISOString() 
-        });
-    });
 }
 
 // Rutas protegidas
@@ -441,28 +221,9 @@ app.get('/api/guilds', requireAuth, async (req, res) => {
     try {
         const guilds = req.session.guilds || [];
         
-        if (BOT_URL) {
-            // En Docker: hacer petición HTTP al bot para obtener servidores donde está presente
-            try {
-                const response = await axios.get(`${BOT_URL}/api/internal/guilds`, { 
-                    timeout: 10000,
-                    headers: {
-                        'X-User-Guilds': JSON.stringify(guilds.map(g => g.id))
-                    }
-                });
-                // Filtrar solo los servidores donde el usuario tiene acceso
-                const botGuilds = response.data.filter(botGuild => 
-                    guilds.some(userGuild => userGuild.id === botGuild.id)
-                );
-                return res.json(botGuilds);
-            } catch (error) {
-                console.error('❌ Error obteniendo servidores del bot:', error.message);
-                // Si el bot no está disponible, retornar lista vacía
-                return res.json([]);
-            }
-        } else if (botClient && botClient.isReady && botClient.isReady()) {
-            // Desarrollo local: usar botClient directamente
-            const botGuilds = [];
+        // Filtrar solo servidores donde el bot está presente
+        const botGuilds = [];
+        if (botClient) {
             for (const guild of guilds) {
                 const botGuild = botClient.guilds.cache.get(guild.id);
                 if (botGuild) {
@@ -482,11 +243,9 @@ app.get('/api/guilds', requireAuth, async (req, res) => {
                     });
                 }
             }
-            return res.json(botGuilds);
-        } else {
-            // Bot no disponible
-            return res.json([]);
         }
+        
+        res.json(botGuilds);
     } catch (error) {
         console.error('Error obteniendo servidores:', error);
         res.status(500).json({ error: 'Error al obtener servidores' });
@@ -497,30 +256,19 @@ app.get('/api/guild/:guildId/channels', requireAuth, async (req, res) => {
     try {
         const { guildId } = req.params;
         
-        // Verificar que el usuario tenga permisos en el servidor
-        const userGuild = req.session.guilds?.find(g => g.id === guildId);
-        if (!userGuild) {
-            return res.status(403).json({ error: 'No tienes acceso a este servidor' });
-        }
-        
-        if (BOT_URL) {
-            // En Docker: hacer petición HTTP al bot
-            try {
-                const response = await axios.get(`${BOT_URL}/api/internal/guild/${guildId}/channels`, { 
-                    timeout: 10000 
-                });
-                return res.json(response.data);
-            } catch (error) {
-                console.error('❌ Error obteniendo canales del bot:', error.message);
-                return res.status(503).json({ error: 'Bot no disponible', details: error.message });
-            }
-        } else if (!botClient) {
+        if (!botClient) {
             return res.status(500).json({ error: 'Bot no disponible' });
         }
 
         const guild = botClient.guilds.cache.get(guildId);
         if (!guild) {
             return res.status(404).json({ error: 'Servidor no encontrado' });
+        }
+
+        // Verificar que el usuario tenga permisos en el servidor
+        const userGuild = req.session.guilds?.find(g => g.id === guildId);
+        if (!userGuild) {
+            return res.status(403).json({ error: 'No tienes acceso a este servidor' });
         }
 
         const channels = guild.channels.cache
@@ -606,38 +354,24 @@ app.post('/api/send-embed', requireAuth, async (req, res) => {
 });
 
 // Ruta para obtener estadísticas del bot
-app.get('/api/stats', requireAuth, async (req, res) => {
-    try {
-        if (BOT_URL) {
-            // En Docker: hacer petición HTTP al bot
-            try {
-                const response = await axios.get(`${BOT_URL}/api/internal/stats`, { timeout: 10000 });
-                return res.json(response.data);
-            } catch (error) {
-                console.error('❌ Error obteniendo stats del bot:', error.message);
-                return res.status(503).json({ error: 'Bot no disponible', details: error.message });
-            }
-        } else if (botClient && botClient.isReady && botClient.isReady()) {
-            // Desarrollo local: usar botClient directamente
-            const stats = {
-                guilds: botClient.guilds.cache.size,
-                users: botClient.users.cache.size,
-                channels: botClient.channels.cache.size,
-                uptime: botClient.uptime,
-                ping: botClient.ws.ping,
-                commands: botClient.commands?.size || 0,
-                memory: process.memoryUsage(),
-                nodeVersion: process.version,
-                platform: process.platform
-            };
-            return res.json(stats);
-        } else {
-            return res.status(503).json({ error: 'Bot no disponible' });
-        }
-    } catch (error) {
-        console.error('Error obteniendo estadísticas:', error);
-        res.status(500).json({ error: 'Error al obtener estadísticas' });
+app.get('/api/stats', requireAuth, (req, res) => {
+    if (!botClient) {
+        return res.status(500).json({ error: 'Bot no disponible' });
     }
+
+    const stats = {
+        guilds: botClient.guilds.cache.size,
+        users: botClient.users.cache.size,
+        channels: botClient.channels.cache.size,
+        uptime: botClient.uptime,
+        ping: botClient.ws.ping,
+        commands: botClient.commands?.size || 0,
+        memory: process.memoryUsage(),
+        nodeVersion: process.version,
+        platform: process.platform
+    };
+
+    res.json(stats);
 });
 
 // Almacenar logs recientes
@@ -1041,7 +775,7 @@ app.get('/api/guild/:guildId/members', requireAuth, async (req, res) => {
 // Ruta para login (mostrar página de login)
 app.get('/login', (req, res) => {
     // Si ya está autenticado, redirigir al dashboard
-    if (req.session.user && req.session.authenticated) {
+    if (req.session.user) {
         return res.redirect('/');
     }
     res.sendFile(path.join(__dirname, 'public', 'login.html'));
@@ -1049,22 +783,9 @@ app.get('/login', (req, res) => {
 
 // Ruta principal - verificar autenticación antes de servir
 app.get('/', (req, res) => {
-    // Log para debugging
-    const cookies = req.headers.cookie || 'Ninguna';
-    const sessionCookie = cookies.includes('tulabot.session') 
-        ? cookies.split('tulabot.session=')[1]?.split(';')[0] 
-        : 'No encontrada';
-    
-    console.log(`📋 GET / - Cookie: ${sessionCookie}, Session ID: ${req.sessionID}, Usuario: ${req.session?.user?.username || 'No'}`);
-    
-    if (!req.session.user || !req.session.authenticated) {
-        console.log('⚠️ Intento de acceso a / sin autenticación');
-        console.log(`   Session ID en request: ${req.sessionID}`);
-        console.log(`   Cookie recibida: ${sessionCookie}`);
+    if (!req.session.user) {
         return res.redirect('/login');
     }
-    
-    console.log(`✅ Sirviendo index.html para usuario autenticado: ${req.session.user.username}`);
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
@@ -1077,53 +798,20 @@ app.get('/dashboard', (req, res) => {
 });
 
 // Iniciar servidor con manejo de errores
-// Solo iniciar automáticamente si no estamos en modo API del bot
-// (En modo API, el servidor se iniciará manualmente desde src/index.js)
-let server = null;
-
-if (!process.env.BOT_API_PORT) {
-    // Modo panel web completo - iniciar automáticamente
-    server = app.listen(PORT, HOST, () => {
-        console.log(`🌐 Panel web iniciado en http://${HOST}:${PORT}`);
-    }).on('error', (error) => {
-        if (error.code === 'EADDRINUSE') {
-            console.error(`❌ Error: El puerto ${PORT} ya está en uso`);
-            console.log(`💡 Soluciones:`);
-            console.log(`   1. Cambia el puerto en .env: WEB_PORT=3001`);
-            console.log(`   2. O detén el proceso que usa el puerto ${PORT}`);
-            console.log(`   3. O deshabilita el panel: WEB_ENABLED=false`);
-            console.log(`\n⚠️  El bot continuará funcionando sin el panel web.`);
-        } else {
-            console.error(`❌ Error iniciando panel web:`, error);
-        }
-    });
-} else {
-    // Modo API del bot - el servidor se iniciará manualmente desde src/index.js
-    console.log(`🔧 Modo API del bot detectado (puerto ${PORT}, host ${HOST})`);
-    console.log(`   El servidor se iniciará cuando el bot esté listo.`);
-}
-
-// Función para iniciar el servidor manualmente (modo API del bot)
-function startServer(port = PORT, host = HOST) {
-    if (server && server.listening) {
-        console.log(`⚠️ El servidor ya está iniciado en ${host}:${port}`);
-        return server;
+const server = app.listen(PORT, () => {
+    console.log(`🌐 Panel web iniciado en http://localhost:${PORT}`);
+}).on('error', (error) => {
+    if (error.code === 'EADDRINUSE') {
+        console.error(`❌ Error: El puerto ${PORT} ya está en uso`);
+        console.log(`💡 Soluciones:`);
+        console.log(`   1. Cambia el puerto en .env: WEB_PORT=3001`);
+        console.log(`   2. O detén el proceso que usa el puerto ${PORT}`);
+        console.log(`   3. O deshabilita el panel: WEB_ENABLED=false`);
+        console.log(`\n⚠️  El bot continuará funcionando sin el panel web.`);
+    } else {
+        console.error(`❌ Error iniciando panel web:`, error);
     }
-    
-    server = app.listen(port, host, () => {
-        console.log(`🚀 API del bot iniciada en http://${host}:${port}`);
-        console.log(`   Listo para recibir peticiones del panel web.`);
-    }).on('error', (error) => {
-        if (error.code === 'EADDRINUSE') {
-            console.error(`❌ Error: El puerto ${port} ya está en uso`);
-            console.log(`💡 Verifica que no haya otro proceso usando el puerto ${port}`);
-        } else {
-            console.error(`❌ Error iniciando API del bot:`, error);
-        }
-    });
-    
-    return server;
-}
+});
 
-module.exports = { setBotClient, app, server, startServer };
+module.exports = { setBotClient, app, server };
 

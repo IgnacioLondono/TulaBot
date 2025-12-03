@@ -1,5 +1,5 @@
 # Dockerfile para TulaBot
-FROM node:20-alpine
+FROM node:18-alpine
 
 # Instalar dependencias del sistema para discord-player y ffmpeg
 RUN apk add --no-cache \
@@ -13,22 +13,15 @@ RUN apk add --no-cache \
 # Crear directorio de trabajo
 WORKDIR /app
 
-# Copiar archivos de dependencias del bot
+# Copiar archivos de dependencias
 COPY package*.json ./
 
-# Instalar dependencias del bot
-# Usar npm install porque package-lock.json puede no existir
-RUN npm install --include=dev --legacy-peer-deps
-
-# Instalar dependencias del panel web directamente en la raíz
-# (necesarias para web_api.js que se carga desde src/index.js)
-RUN npm install express express-session discord-oauth2 axios cors dotenv --save --omit=dev --legacy-peer-deps
+# Instalar dependencias
+RUN npm ci --only=production
 
 # Copiar código fuente
 COPY src/ ./src/
-
-# CRÍTICO: Copiar la carpeta web COMPLETA para que el bot pueda cargar el módulo del servidor API
-COPY web/ ./web/
+COPY verificar-*.js ./
 
 # Crear directorios necesarios
 RUN mkdir -p logs data
@@ -38,3 +31,4 @@ ENV NODE_ENV=production
 
 # Comando por defecto
 CMD ["node", "src/index.js"]
+
