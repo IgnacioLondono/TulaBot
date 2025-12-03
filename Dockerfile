@@ -16,8 +16,11 @@ WORKDIR /app
 # Copiar archivos de dependencias
 COPY package*.json ./
 
-# Instalar dependencias
-RUN npm ci --only=production
+# Instalar dependencias (primero todas para compilar dependencias nativas)
+# Luego limpiar devDependencies para reducir tamaño de imagen
+RUN npm install --no-audit --no-fund && \
+    npm prune --production && \
+    npm cache clean --force
 
 # Copiar código fuente
 COPY src/ ./src/

@@ -7,9 +7,11 @@ WORKDIR /app
 # Copiar archivos de dependencias
 COPY package*.json ./
 
-# Instalar dependencias
-# Usar npm install porque package-lock.json puede no existir
-RUN npm install --omit=dev --legacy-peer-deps
+# Instalar dependencias (primero todas para compilar dependencias nativas)
+# Luego limpiar devDependencies para reducir tamaño de imagen
+RUN npm install --no-audit --no-fund && \
+    npm prune --production && \
+    npm cache clean --force
 
 # Copiar código fuente
 COPY public/ ./public/
